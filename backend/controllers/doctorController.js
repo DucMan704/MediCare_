@@ -3,6 +3,12 @@ import bcrypt from "bcrypt";
 import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
+import Session from "../models/sessionModel.js";
+import crypto from "crypto";
+import mongoose from "mongoose";
+
+const ACCESS_TOKEN_TTL = "30m";
+const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
 
 const parseSlotDate = (slotDate) => {
   const [day, month, year] = slotDate.split("_").map(Number);
@@ -57,92 +63,99 @@ const syncOverdueAppointments = async (docId) => {
 const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const normalizedEmail = email?.trim().toLowerCase();
-    const user = await doctorModel
-      .findOne({ email: normalizedEmail })
-      .collation({ locale: "en", strength: 2 });
 
-    if (!user) {
-      return res.json({ success: false, message: "Invalid credentials" });
+    // Kiểm tra dữ liệu đầu vào
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
     }
 
-    const isHashedPassword = user.password?.startsWith("$2");
-    const isMatch = isHashedPassword
-      ? await bcrypt.compare(password, user.password)
-      : password === user.password;
+    // Chuẩn hóa email
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (isMatch) {
-      if (!isHashedPassword) {
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        await doctorModel.findByIdAndUpdate(user._id, {
-          password: hashedPassword,
-        });
-      }
-      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-      res.json({ success: true, token });
-    } else {
-      res.json({ success: false, message: "Invalid credentials" });
+    // Tìm user
+    const doctor = await doctorModel.findOne({ email: normalizedEmail });
+
+    if (!doctor) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
     }
+
+    // So sánh mật khẩu
+    const isMatch = await bcrypt.compare(password, doctor.password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    // Tạo JWT
+    const token = jwt.sign({ id: doctor._id }, process.env.JWT_SECRET, {
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+
+    // tạo refresh token
+    const refreshToken = crypto.randomBytes(64).toString("hex");
+
+    //lưu refresh token vào database
+    await Session.create({
+      ownerId: doctor._id,
+      ownerType: "Doctor",
+      refreshToken,
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL), // 7 ngày
+    });
+    // Trả refreshtoken về trong cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: REFRESH_TOKEN_TTL,
+    });
+
+    // Trả kết quả
+    return res.status(200).json({
+      success: true,
+      message: "Login successfully",
+      token
+      
+    });
   } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
+    console.error("Login Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 };
 
 // API to get doctor appointments for doctor panel
 const appointmentsDoctor = async (req, res) => {
   try {
-    const { docId } = req.body;
+    const docId = req.doctor._id;
     await syncOverdueAppointments(docId);
-    const appointments = await appointmentModel.find({ docId });
+    const appointments = await appointmentModel.find({ docId }).lean();
 
     res.json({ success: true, appointments });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// API to cancel appointment for doctor panel
-const appointmentCancel = async (req, res) => {
-  try {
-    const { docId, appointmentId } = req.body;
 
-    const appointmentData = await appointmentModel.findById(appointmentId);
-    if (appointmentData && appointmentData.docId === docId) {
-      await appointmentModel.findByIdAndUpdate(appointmentId, {
-        cancelled: true,
-      });
-
-      await scheduleModel.findOneAndUpdate(
-        {
-          doctorId: docId,
-          workDate: parseSlotDate(appointmentData.slotDate),
-          timeSlot: appointmentData.slotTime,
-        },
-        {
-          $set: {
-            isBooked: false,
-            appointmentId: null,
-          },
-        },
-      );
-
-      return res.json({ success: true, message: "Appointment Cancelled" });
-    }
-
-    res.json({ success: false, message: "Appointment Cancelled" });
-  } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
-  }
-};
 
 // API to accept appointment for doctor panel
 const appointmentAccept = async (req, res) => {
   try {
-    const { docId, appointmentId } = req.body;
+    const docId = req.doctor._id;
+    const { appointmentId } = req.body;
 
     const appointmentData = await appointmentModel.findById(appointmentId);
     if (
@@ -169,115 +182,81 @@ const appointmentAccept = async (req, res) => {
         { upsert: true },
       );
 
-      return res.json({ success: true, message: "Appointment Accepted" });
+      return res.status(200).json({ success: true, message: "Appointment Accepted" });
     }
 
-    res.json({ success: false, message: "Appointment Not Found" });
+    res.status(404).json({ success: false, message: "Appointment Not Found" });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// API to mark appointment completed for doctor panel
-const appointmentComplete = async (req, res) => {
-  try {
-    const { docId, appointmentId } = req.body;
 
-    const appointmentData = await appointmentModel.findById(appointmentId);
-    if (appointmentData && appointmentData.docId === docId) {
-      await appointmentModel.findByIdAndUpdate(appointmentId, {
-        isAccepted: true,
-        isCompleted: true,
-      });
-
-      await scheduleModel.findOneAndUpdate(
-        {
-          doctorId: docId,
-          workDate: parseSlotDate(appointmentData.slotDate),
-          timeSlot: appointmentData.slotTime,
-        },
-        {
-          $set: {
-            isBooked: true,
-            appointmentId: appointmentData._id,
-          },
-        },
-        { upsert: true },
-      );
-
-      return res.json({ success: true, message: "Appointment Completed" });
-    }
-
-    res.json({ success: false, message: "Appointment Cancelled" });
-  } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
-  }
-};
 
 // API to get all doctors list for Frontend
 const doctorList = async (req, res) => {
   try {
-    const doctors = await doctorModel.find({}).select(["-password", "-email"]);
-    res.json({ success: true, doctors });
+    const doctors = await doctorModel.find({}).select(["-password", "-email"]).lean();
+    res.status(200).json({ success: true, doctors });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // API to change doctor availablity for Admin and Doctor Panel
 const changeAvailablity = async (req, res) => {
   try {
-    const { docId } = req.body;
+    const docId = req.doctor ? req.doctor._id : req.body.docId;
 
     const docData = await doctorModel.findById(docId);
     await doctorModel.findByIdAndUpdate(docId, {
       available: !docData.available,
     });
-    res.json({ success: true, message: "Availablity Changed" });
+    res.status(200).json({ success: true, message: "Availablity Changed" });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // API to get doctor profile for  Doctor Panel
 const doctorProfile = async (req, res) => {
   try {
-    const { docId } = req.body;
-    const profileData = await doctorModel.findById(docId).select("-password");
+    const docId = req.doctor._id;
+    const profileData = await doctorModel.findById(docId).select("-password").lean();
 
-    res.json({ success: true, profileData });
+    res.status(200).json({ success: true, profileData });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // API to update doctor profile data from  Doctor Panel
 const updateDoctorProfile = async (req, res) => {
   try {
-    const { docId, fees, address, available } = req.body;
+    const docId = req.doctor._id;
+    const { fees, address, available } = req.body;
 
     await doctorModel.findByIdAndUpdate(docId, { fees, address, available });
 
-    res.json({ success: true, message: "Profile Updated" });
+    res.status(200).json({ success: true, message: "Profile Updated" });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // API to get dashboard data for doctor panel
 const doctorDashboard = async (req, res) => {
   try {
-    const { docId } = req.body;
+    const docId = req.doctor._id;
 
     await syncOverdueAppointments(docId);
 
-    const appointments = await appointmentModel.find({ docId });
+    const appointments = await appointmentModel.find({ docId }).lean();
 
     let earnings = 0;
 
@@ -302,17 +281,18 @@ const doctorDashboard = async (req, res) => {
       latestAppointments: appointments.reverse(),
     };
 
-    res.json({ success: true, dashData });
+    res.status(200).json({ success: true, dashData });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // API to update doctor availability (schedule) for Doctor Panel
 const updateAvailability = async (req, res) => {
   try {
-    const { docId, workDate, slots } = req.body;
+    const docId = req.doctor._id;
+    const { workDate, slots } = req.body;
 
     if (!workDate || !Array.isArray(slots) || slots.length === 0) {
       return res.json({ success: false, message: "Dữ liệu không hợp lệ" });
@@ -366,14 +346,14 @@ const updateAvailability = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // API to get doctor's schedule (availability) within a date range for Doctor Panel
 const getAvailability = async (req, res) => {
   try {
-    const { docId } = req.body; // gán từ middleware authDoctor
+    const docId = req.doctor._id;
     const { fromDate, toDate } = req.query;
 
     if (!fromDate || !toDate) {
@@ -393,10 +373,10 @@ const getAvailability = async (req, res) => {
       })
       .select("workDate timeSlot available isBooked");
 
-    res.json({ success: true, schedules });
+    res.status(200).json({ success: true, schedules });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -421,11 +401,140 @@ const getDoctorSlots = async (req, res) => {
       .select("workDate timeSlot available isBooked")
       .sort({ workDate: 1, timeSlot: 1 });
 
-    res.json({ success: true, schedules });
+    res.status(200).json({ success: true, schedules });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
+};
+
+const appointmentComplete = async (req, res) => {
+    try {
+        const docId = req.doctor._id;
+        const { appointmentId } = req.body;
+
+        const appointment = await appointmentModel.findById(appointmentId);
+
+        if (!appointment) {
+            return res.status(404).json({
+                success: false,
+                message: "Appointment not found",
+            });
+        }
+
+        if (appointment.docId !== docId) {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized action",
+            });
+        }
+
+        if (appointment.cancelled) {
+            return res.status(400).json({
+                success: false,
+                message: "Appointment has been cancelled",
+            });
+        }
+
+        if (appointment.isCompleted) {
+            return res.status(400).json({
+                success: false,
+                message: "Appointment already completed",
+            });
+        }
+
+        appointment.isCompleted = true;
+        await appointment.save();
+
+        res.json({
+            success: true,
+            message: "Appointment completed successfully",
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+const appointmentCancel = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const docId = req.doctor._id;
+        const { appointmentId } = req.body;
+
+        //  Kiểm tra lịch khám
+        const appointment = await appointmentModel.findById(appointmentId).session(session);
+
+        if (!appointment) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({
+                success: false,
+                message: "Appointment not found"
+            });
+        }
+
+        //  Kiểm tra bác sĩ có quyền hủy k
+        if (appointment.docId !== docId) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized action"
+            });
+        }
+
+        //  Đã hủy rồi
+        if (appointment.cancelled) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                success: false,
+                message: "Appointment already cancelled"
+            });
+        }
+
+        // cuộc hẹn đã hoàn thành thì không được hủy
+        if (appointment.isCompleted) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({
+                success: false,
+                message: "Completed appointment cannot be cancelled"
+            });
+        }
+
+        appointment.cancelled = true;
+        await appointment.save({ session });
+
+        // xóa slot đã hẹn 
+        await doctorModel.findByIdAndUpdate(docId, {
+            $pull: { [`slots_booked.${appointment.slotDate}`]: appointment.slotTime }
+        }, { session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return res.json({
+            success: true,
+            message: "Appointment cancelled successfully"
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+        console.log(error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
 };
 
 export {
