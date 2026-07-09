@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import validator from "validator";
 import { v2 as cloudinary } from "cloudinary";
 import userModel from "../models/userModel.js";
+import mongoose from "mongoose";
 
 // API for admin login
 const loginAdmin = async (req, res) => {
@@ -29,7 +30,7 @@ const loginAdmin = async (req, res) => {
 // API to get all appointments list
 const appointmentsAdmin = async (req, res) => {
   try {
-    const appointments = await appointmentModel.find({});
+    const appointments = await appointmentModel.find({}).lean();
     res.json({ success: true, appointments });
   } catch (error) {
     console.log(error);
@@ -37,20 +38,42 @@ const appointmentsAdmin = async (req, res) => {
   }
 };
 
-// API for appointment cancellation
 const appointmentCancel = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { appointmentId } = req.body;
+    const appointmentData = await appointmentModel.findById(appointmentId).session(session);
+
+    if (!appointmentData) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ success: false, message: "Appointment not found" });
+    }
+
     await appointmentModel.findByIdAndUpdate(appointmentId, {
       cancelled: true,
-    });
+    }, { session });
+
+    // xóa slot của bác sĩ 
+    const { docId, slotDate, slotTime } = appointmentData;
+    await doctorModel.findByIdAndUpdate(docId, {
+      $pull: { [`slots_booked.${slotDate}`]: slotTime }
+    }, { session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     res.json({ success: true, message: "Appointment Cancelled" });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.log(error);
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // API for adding Doctor
 const addDoctor = async (req, res) => {
@@ -135,7 +158,7 @@ const addDoctor = async (req, res) => {
 // API to get all doctors list for admin panel
 const allDoctors = async (req, res) => {
   try {
-    const doctors = await doctorModel.find({}).select("-password");
+    const doctors = await doctorModel.find({}).select("-password").lean();
     res.json({ success: true, doctors });
   } catch (error) {
     console.log(error);
@@ -146,9 +169,9 @@ const allDoctors = async (req, res) => {
 // API to get dashboard data for admin panel
 const adminDashboard = async (req, res) => {
   try {
-    const doctors = await doctorModel.find({});
-    const users = await userModel.find({});
-    const appointments = await appointmentModel.find({});
+    const doctors = await doctorModel.find({}).lean();
+    const users = await userModel.find({}).lean();
+    const appointments = await appointmentModel.find({}).lean();
 
     const dashData = {
       doctors: doctors.length,

@@ -1,19 +1,36 @@
-import jwt from 'jsonwebtoken'
+import jwt from "jsonwebtoken";
+import User from "../models/userModel.js";
 
-// user authentication middleware
-const authUser = async (req, res, next) => {
-    const { token } = req.headers
-    if (!token) {
-        return res.json({ success: false, message: 'Not Authorized Login Again' })
-    }
+export const authUser = async (req, res, next) => {
     try {
-        const token_decode = jwt.verify(token, process.env.JWT_SECRET)
-        req.body.userId = token_decode.id
-        next()
+
+        const authHeader = req.headers["authorization"];
+        const token = authHeader && authHeader.split(" ")[1];
+
+        if (!token) {
+            return res.status(401).json({ message: "Access Denied: No access token provided" });
+        }
+        // Verify the token
+        jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
+            if (err) {
+                return res.status(403).json({ message: "Access Denied: Invalid access token" });
+            } 
+
+            // find user
+            const user = await User.findById(decoded.id).select("-password");
+           // console.log("Authenticated user:", user); // Log the authenticated user
+
+            if (!user) {
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            // trả user trong req 
+            req.user = user;
+            next();
+        })
+
     } catch (error) {
-        console.log(error)
-        res.json({ success: false, message: error.message })
+        console.error("Error in authUser middleware:", error);
+        return res.status(500).json({ message: "Internal Server Error" });
     }
 }
-
-export default authUser;

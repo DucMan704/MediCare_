@@ -9,21 +9,15 @@ import userRouter from "./routes/userRoute.js";
 import doctorRouter from "./routes/doctorRoute.js";
 import adminRouter from "./routes/adminRoute.js";
 import messageRouter from "./routes/messageRoute.js";
+import {globalLimiter} from "./middleware/rateLimit.js";
 
 const app = express();
 
 const port = process.env.PORT || 4000;
 
-// ===============================
-// CONNECT DATABASE + CLOUDINARY
-// ===============================
 
 connectDB();
 connectCloudinary();
-
-// ===============================
-// CORS CONFIGURATION
-// ===============================
 
 const allowedOrigins = [
   // Local development
@@ -68,8 +62,7 @@ const corsOptions = {
     // Admin token
     "atoken",
 
-    // Doctor token
-    "dtoken",
+    
   ],
 };
 
@@ -79,15 +72,9 @@ app.use(cors(corsOptions));
 // Xử lý preflight request
 app.options("*", cors(corsOptions));
 
-// ===============================
-// BODY PARSER
-// ===============================
-
 app.use(express.json());
 
-// ===============================
-// API ROUTES
-// ===============================
+app.use(globalLimiter);
 
 app.use("/api/user", userRouter);
 
@@ -97,17 +84,7 @@ app.use("/api/doctor", doctorRouter);
 
 app.use("/api/messages", messageRouter);
 
-// ===============================
-// TEST API
-// ===============================
 
-app.get("/", (req, res) => {
-  res.status(200).send("API Working");
-});
-
-// ===============================
-// ERROR HANDLER
-// ===============================
 
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err.message);
@@ -127,9 +104,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ===============================
-// START SERVER
-// ===============================
 
 app.listen(port, () => {
   console.log(`Server running on PORT:${port}`);
