@@ -7,6 +7,7 @@ import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
 import MedicalRecord from "../models/medicalRecordModel.js";
 import userMedicalRecordModel from "../models/userMedicalRecordModel.js";
+import reviewModel from "../models/reviewModel.js";
 import { v2 as cloudinary } from "cloudinary";
 import stripe from "stripe";
 import razorpay from "razorpay";
@@ -633,6 +634,91 @@ const updateMedicalRecordForUser = async (req, res) => {
   }
 };
 
+const getMedicalRecords = async (req, res) => {
+  try {
+    // B1: Lấy userId từ params
+    const { userId } = req.params;
+
+    // B2: Kiểm tra userId có tồn tại trong cơ sở dữ liệu không
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    // B3: Lấy danh sách hồ sơ y tế của người dùng từ bảng userMedicalRecordModel
+    const medicalRecords = await userMedicalRecordModel
+      .find({ userId })
+      .populate({
+        path: "medicalRecordId",
+        populate: {
+          path: "doctorId",
+          select: "name speciality image",
+        },
+      });
+
+    // B4: Trả về danh sách hồ sơ y tế cho người dùng
+    return res.json({
+      success: true,
+      message: "Lấy danh sách hồ sơ y tế thành công",
+      medicalRecords,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+const reviewDoctor = async (req, res) => {
+  try {
+    // B1: Lấy thông tin từ body và người dùng đã xác thực
+    const { docId, rating, comment } = req.body;
+    const userId = req.body.userId;
+
+    // B2: Kiểm tra thông tin bắt buộc — comment là tùy chọn theo schema (default: "")
+    if (!docId || !rating) {
+      return res.json({
+        success: false,
+        message: "Vui lòng chọn bác sĩ và số sao đánh giá",
+      });
+    }
+
+    const numericRating = Number(rating);
+    if (
+      !Number.isInteger(numericRating) ||
+      numericRating < 1 ||
+      numericRating > 5
+    ) {
+      return res.json({
+        success: false,
+        message: "Đánh giá phải là số nguyên từ 1 đến 5 sao",
+      });
+    }
+
+    // B3: Kiểm tra doctorId có tồn tại trong cơ sở dữ liệu không
+    const doctor = await doctorModel.findById(docId);
+    if (!doctor) {
+      return res.json({ success: false, message: "Bác sĩ không tồn tại" });
+    }
+
+    // B4: Tạo review mới, hoặc cập nhật nếu bệnh nhân đã đánh giá bác sĩ này trước đó
+    const review = await reviewModel.findOneAndUpdate(
+      { userId: userId, doctorId: docId },
+      { rating: numericRating, comment: comment?.trim() || "" },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+
+    // B5: Trả về thông báo thành công
+    return res.json({
+      success: true,
+      message: "Đánh giá bác sĩ thành công",
+      review,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
 export {
   loginUser,
   registerUser,
@@ -648,4 +734,6 @@ export {
   getMedicalRecordsByUserId,
   createMedicalRecordForUser,
   updateMedicalRecordForUser,
+  getMedicalRecords,
+  reviewDoctor,
 };

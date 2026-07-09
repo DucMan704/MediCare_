@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
+import Review from "../models/reviewModel.js";
 
 const parseSlotDate = (slotDate) => {
   const [day, month, year] = slotDate.split("_").map(Number);
@@ -428,6 +429,26 @@ const getDoctorSlots = async (req, res) => {
   }
 };
 
+const getDoctorReview = async (req, res) => {
+  try {
+    // B1: Lấy docId từ params
+    const { docId } = req.params;
+
+    // B2: Tìm tất cả review của bác sĩ đó, sắp xếp theo createdAt giảm dần,
+    // populate userId để lấy name và image
+    const reviews = await Review.find({ doctorId: docId })
+      .sort({ createdAt: -1 })
+      .populate("userId", "name image");
+
+    // B3: Trả về danh sách review
+    return res.json({ success: true, reviews });
+  } catch (error) {
+    // B4: Xử lý lỗi
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
 export {
   loginDoctor,
   appointmentsDoctor,
@@ -442,4 +463,5 @@ export {
   updateDoctorProfile,
   updateAvailability,
   getAvailability,
+  getDoctorReview,
 };

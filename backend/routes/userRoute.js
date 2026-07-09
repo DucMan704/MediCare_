@@ -11,6 +11,8 @@ import {
   verifyRazorpay,
   paymentStripe,
   verifyStripe,
+  getMedicalRecords,
+  reviewDoctor,
 } from "../controllers/userController.js";
 import upload from "../middleware/multer.js";
 import authUser from "../middleware/authUser.js";
@@ -33,5 +35,7 @@ userRouter.post("/payment-razorpay", authUser, paymentRazorpay);
 userRouter.post("/verifyRazorpay", authUser, verifyRazorpay);
 userRouter.post("/payment-stripe", authUser, paymentStripe);
 userRouter.post("/verifyStripe", authUser, verifyStripe);
+userRouter.get("/medical-records/:userId", authUser, getMedicalRecords);
+userRouter.post("/add-review", authUser, reviewDoctor);
 
 export default userRouter;

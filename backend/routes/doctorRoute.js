@@ -13,6 +13,7 @@ import {
   updateAvailability,
   getAvailability,
   getDoctorSlots,
+  getDoctorReview,
 } from "../controllers/doctorController.js";
 import {
   getMedicalRecordsByUserId,
@@ -50,5 +51,6 @@ doctorRouter.get("/profile", authDoctor, doctorProfile);
 doctorRouter.post("/update-profile", authDoctor, updateDoctorProfile);
 doctorRouter.post("/update-availability", authDoctor, updateAvailability);
 doctorRouter.get("/get-availability", authDoctor, getAvailability);
+doctorRouter.get("/reviews/:docId", getDoctorReview);
 
 export default doctorRouter;
