@@ -158,7 +158,7 @@ const appointmentAccept = async (req, res) => {
     const appointmentData = await appointmentModel.findById(appointmentId);
     if (
       appointmentData &&
-      appointmentData.docId === docId &&
+      appointmentData.docId.toString() === docId.toString() &&
       !appointmentData.cancelled
     ) {
       await appointmentModel.findByIdAndUpdate(appointmentId, {

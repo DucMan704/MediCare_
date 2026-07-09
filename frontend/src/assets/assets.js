@@ -41,6 +41,7 @@ import malaria_image from "./malaria_image.jpg";
 import pneumonia_image from "./pneumonia_image.jpg";
 import stroke_image from "./stroke_image.png";
 import skin_image from "./skin_image.jpg";
+import Aidoctor from "./Aidoctor.jpg";
 
 export const assets = {
   appointment_img,
@@ -65,6 +66,7 @@ export const assets = {
   pneumonia_image,
   stroke_image,
   skin_image,
+  Aidoctor,
 };
 
 export const specialityData = [

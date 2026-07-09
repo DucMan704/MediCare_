@@ -7,20 +7,44 @@ export const DoctorContext = createContext();
 const DoctorContextProvider = (props) => {
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-  const [dToken, setDToken] = useState(
-    localStorage.getItem("dToken") ? localStorage.getItem("dToken") : "",
-  );
+  // Lấy dToken gọn gàng hơn
+  const [dToken, setDToken] = useState(localStorage.getItem("dToken") || "");
+
   const [appointments, setAppointments] = useState([]);
   const [dashData, setDashData] = useState(false);
   const [profileData, setProfileData] = useState(false);
   const [medicalRecords, setMedicalRecords] = useState([]);
+
+  // ==========================================
+  // NHÓM HÀM LẤY DỮ LIỆU (ĐƯA LÊN TRÊN CÙNG)
+  // ==========================================
+
+  // Getting Doctor dashboard data using API
+  const getDashData = async () => {
+    try {
+      const { data } = await axios.get(backendUrl + "/api/doctor/dashboard", {
+        headers: { dtoken: dToken }, // Chuẩn hóa dtoken chữ thường
+      });
+
+      if (data.success) {
+        setDashData(data.dashData);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.message || error.message);
+    }
+  };
 
   // Getting Doctor appointment data from Database using API
   const getAppointments = async () => {
     try {
       const { data } = await axios.get(
         backendUrl + "/api/doctor/appointments",
-        { headers: { dToken } },
+        {
+          headers: { dtoken: dToken },
+        },
       );
 
       if (data.success) {
@@ -30,7 +54,7 @@ const DoctorContextProvider = (props) => {
       }
     } catch (error) {
       console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || error.message);
     }
   };
 
@@ -38,21 +62,29 @@ const DoctorContextProvider = (props) => {
   const getProfileData = async () => {
     try {
       const { data } = await axios.get(backendUrl + "/api/doctor/profile", {
-        headers: { dToken },
+        headers: { dtoken: dToken },
       });
-      console.log(data.profileData);
-      setProfileData(data.profileData);
+
+      if (data.success) {
+        setProfileData(data.profileData);
+      } else {
+        toast.error(data.message);
+      }
     } catch (error) {
       console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || error.message);
     }
   };
+
+  // ==========================================
+  // NHÓM HÀM XỬ LÝ HỒ SƠ BỆNH ÁN
+  // ==========================================
 
   const getMedicalRecordsByUserId = async (userId) => {
     try {
       const { data } = await axios.get(
         backendUrl + `/api/doctor/medical-records/${userId}`,
-        { headers: { dToken } },
+        { headers: { dtoken: dToken } },
       );
 
       if (data.success) {
@@ -65,7 +97,7 @@ const DoctorContextProvider = (props) => {
       return [];
     } catch (error) {
       console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || error.message);
       setMedicalRecords([]);
       return [];
     }
@@ -76,7 +108,7 @@ const DoctorContextProvider = (props) => {
       const { data } = await axios.post(
         backendUrl + "/api/doctor/create-medical-records",
         payload,
-        { headers: { dToken } },
+        { headers: { dtoken: dToken } },
       );
 
       if (data.success) {
@@ -88,7 +120,7 @@ const DoctorContextProvider = (props) => {
       return null;
     } catch (error) {
       console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || error.message);
       return null;
     }
   };
@@ -98,7 +130,7 @@ const DoctorContextProvider = (props) => {
       const { data } = await axios.put(
         backendUrl + `/api/doctor/medical-records/${medicalRecordId}`,
         payload,
-        { headers: { dToken } },
+        { headers: { dtoken: dToken } },
       );
 
       if (data.success) {
@@ -110,41 +142,42 @@ const DoctorContextProvider = (props) => {
       return null;
     } catch (error) {
       console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || error.message);
       return null;
     }
   };
 
-  // Function to cancel doctor appointment using API
+  // ==========================================
+  // NHÓM HÀM XỬ LÝ LỊCH HẸN
+  // ==========================================
+
   const cancelAppointment = async (appointmentId) => {
     try {
       const { data } = await axios.post(
         backendUrl + "/api/doctor/cancel-appointment",
         { appointmentId },
-        { headers: { dToken } },
+        { headers: { dtoken: dToken } },
       );
 
       if (data.success) {
         toast.success(data.message);
         getAppointments();
-        // after creating dashboard
         getDashData();
       } else {
         toast.error(data.message);
       }
     } catch (error) {
-      toast.error(error.message);
       console.log(error);
+      toast.error(error.response?.data?.message || error.message);
     }
   };
 
-  // Function to accept doctor appointment using API
   const acceptAppointment = async (appointmentId) => {
     try {
       const { data } = await axios.post(
         backendUrl + "/api/doctor/accept-appointment",
         { appointmentId },
-        { headers: { dToken } },
+        { headers: { dtoken: dToken } },
       );
 
       if (data.success) {
@@ -155,49 +188,29 @@ const DoctorContextProvider = (props) => {
         toast.error(data.message);
       }
     } catch (error) {
-      toast.error(error.message);
       console.log(error);
+      toast.error(error.response?.data?.message || error.message);
     }
   };
 
-  // Function to Mark appointment completed using API
   const completeAppointment = async (appointmentId) => {
     try {
       const { data } = await axios.post(
         backendUrl + "/api/doctor/complete-appointment",
         { appointmentId },
-        { headers: { dToken } },
+        { headers: { dtoken: dToken } },
       );
 
       if (data.success) {
         toast.success(data.message);
         getAppointments();
-        // Later after creating getDashData Function
         getDashData();
       } else {
         toast.error(data.message);
       }
     } catch (error) {
-      toast.error(error.message);
       console.log(error);
-    }
-  };
-
-  // Getting Doctor dashboard data using API
-  const getDashData = async () => {
-    try {
-      const { data } = await axios.get(backendUrl + "/api/doctor/dashboard", {
-        headers: { dToken },
-      });
-
-      if (data.success) {
-        setDashData(data.dashData);
-      } else {
-        toast.error(data.message);
-      }
-    } catch (error) {
-      console.log(error);
-      toast.error(error.message);
+      toast.error(error.response?.data?.message || error.message);
     }
   };
 
