@@ -196,7 +196,7 @@ const logoutUser = async (req, res) => {
   }
 };
 
-export const authMe = async (req, res) => {
+const authMe = async (req, res) => {
   return res.status(200).json({
     success: true,
     user: req.user,
@@ -204,9 +204,8 @@ export const authMe = async (req, res) => {
   });
 };
 
-
 //refresh token
-  const refreshToken = async (req, res) => {
+const refreshToken = async (req, res) => {
   try {
     // lấy refresh token từ cookie
     const token = req.cookies?.refreshToken;
@@ -249,7 +248,10 @@ export const authMe = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = req.user._id;
-    const userData = await userModel.findById(userId).select("-password").lean();
+    const userData = await userModel
+      .findById(userId)
+      .select("-password")
+      .lean();
 
     res.status(200).json({ success: true, userData });
   } catch (error) {
@@ -303,37 +305,54 @@ const bookAppointment = async (req, res) => {
     const userId = req.user._id;
     const { docId, slotDate, slotTime } = req.body;
 
-    // khóa atomic cái slot lại 
+    // khóa atomic cái slot lại
     //  Bác sĩ phải có và đang available, và slotTime chưa nằm trong mảng của slotDate
-    const updatedDoctor = await doctorModel.findOneAndUpdate(
-      { 
-        _id: docId, 
-        available: true,
-        [`slots_booked.${slotDate}`]: { $ne: slotTime } 
-      },
-      { 
-        $push: { [`slots_booked.${slotDate}`]: slotTime } 
-      },
-      { new: true, select: "-password", session }
-    ).lean();
+    const updatedDoctor = await doctorModel
+      .findOneAndUpdate(
+        {
+          _id: docId,
+          available: true,
+          [`slots_booked.${slotDate}`]: { $ne: slotTime },
+        },
+        {
+          $push: { [`slots_booked.${slotDate}`]: slotTime },
+        },
+        { new: true, select: "-password", session },
+      )
+      .lean();
 
     if (!updatedDoctor) {
-      // if update thất bại thif kiểm tra nguyên nhân để trả về lỗi 
+      // if update thất bại thif kiểm tra nguyên nhân để trả về lỗi
       const docCheck = await doctorModel.findById(docId).session(session);
       await session.abortTransaction();
       session.endSession();
 
-      if (!docCheck) return res.status(404).json({ success: false, message: "Doctor not found" });
-      if (!docCheck.available) return res.status(400).json({ success: false, message: "Doctor Not Available" });
-      return res.status(400).json({ success: false, message: "Slot Not Available (Double Booking Prevented)" });
+      if (!docCheck)
+        return res
+          .status(404)
+          .json({ success: false, message: "Doctor not found" });
+      if (!docCheck.available)
+        return res
+          .status(400)
+          .json({ success: false, message: "Doctor Not Available" });
+      return res.status(400).json({
+        success: false,
+        message: "Slot Not Available (Double Booking Prevented)",
+      });
     }
 
-    const userData = await userModel.findById(userId).select("-password").session(session).lean();
+    const userData = await userModel
+      .findById(userId)
+      .select("-password")
+      .session(session)
+      .lean();
 
     if (!userData) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     delete updatedDoctor.slots_booked;
@@ -359,12 +378,11 @@ const bookAppointment = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    
+
     console.log(error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // API to get user appointments for frontend my-appointments page
 const listAppointment = async (req, res) => {
@@ -386,36 +404,47 @@ const cancelAppointment = async (req, res) => {
   try {
     const userId = req.user._id;
     const { appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId).session(session)
+    const appointmentData = await appointmentModel
+      .findById(appointmentId)
+      .session(session);
 
-    // ktra appointment user 
+    // ktra appointment user
     if (appointmentData.userId.toString() !== userId.toString()) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ success: false, message: 'Unauthorized action' })
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized action" });
     }
 
-    await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true }, { session })
+    await appointmentModel.findByIdAndUpdate(
+      appointmentId,
+      { cancelled: true },
+      { session },
+    );
 
     // releasing doctor slot using atomic $pull operator
-    const { docId, slotDate, slotTime } = appointmentData
+    const { docId, slotDate, slotTime } = appointmentData;
 
-    await doctorModel.findByIdAndUpdate(docId, { 
-      $pull: { [`slots_booked.${slotDate}`]: slotTime } 
-    }, { session })
+    await doctorModel.findByIdAndUpdate(
+      docId,
+      {
+        $pull: { [`slots_booked.${slotDate}`]: slotTime },
+      },
+      { session },
+    );
 
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ success: true, message: 'Appointment Cancelled' })
-
+    res.json({ success: true, message: "Appointment Cancelled" });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.log(error)
-    res.json({ success: false, message: error.message })
+    console.log(error);
+    res.json({ success: false, message: error.message });
   }
-}
+};
 
 // API to make payment of appointment using razorpay
 const paymentRazorpay = async (req, res) => {

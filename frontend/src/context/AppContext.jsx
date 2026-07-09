@@ -32,12 +32,16 @@ const AppContextProvider = (props) => {
   // Getting User Profile using API
   const loadUserProfileData = async () => {
     try {
-      const { data } = await axios.get(backendUrl + "/api/user/get-profile", {
-        headers: { token },
+      const { data } = await axios.get(backendUrl + `/api/user/get-profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (data.success) {
-        setUserData(data.userData);
+        // CẬP NHẬT DÒNG NÀY: Dùng data.user thay vì data.userData
+        // (Hoặc dùng fallback data.userData || data.user cho an toàn)
+        setUserData(data.user || data.userData);
       } else {
         toast.error(data.message);
       }
