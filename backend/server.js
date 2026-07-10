@@ -25,8 +25,8 @@ const allowedOrigins = [
   "http://localhost:5174",
 
   // Production frontend
-  "https://medi-care-ochre.vercel.app",
-  "https://medi-care-admin-tau.vercel.app",
+  "medicare-for-user.vercel.app",
+  "medi-care-puce-phi.vercel.app",
 ];
 
 const corsOptions = {
