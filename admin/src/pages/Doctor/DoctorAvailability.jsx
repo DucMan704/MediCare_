@@ -4,6 +4,19 @@ import { AppContext } from "../../context/AppContext";
 import axios from "axios";
 import { toast } from "react-toastify";
 import { defaultTimeSlots, monthNamesVi, weekDaysVi } from "../../utils/i18n";
+// Thêm dòng import này ở đầu file của bạn
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CalendarDays,
+  Clock,
+  Save,
+  CalendarPlus,
+  CheckCircle2,
+  Info,
+} from "lucide-react";
 
 const buildAvailabilityFromSchedules = (schedules) => {
   const result = {};
