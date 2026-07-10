@@ -296,6 +296,35 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const findDoctorFeeByAppointmentId = async (appointmentId) => {
+  try {
+    // B1 & B2: Tìm cuộc hẹn và chỉ lấy trường docId
+    const appointment = await appointmentModel
+      .findById(appointmentId)
+      .select("docId")
+      .lean();
+
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+
+    // B3 & B4: Tìm bác sĩ và chỉ lấy trường fees
+    const doctor = await doctorModel
+      .findById(appointment.docId)
+      .select("fees")
+      .lean();
+
+    if (!doctor) {
+      throw new Error("Doctor not found");
+    }
+
+    return doctor.fees;
+  } catch (error) {
+    console.error("Error in findDoctorFeeByAppointmentId:", error.message);
+    throw error; // Throw ra ngoài để Controller cấp cao hơn bọc và res.json() lỗi
+  }
+};
+
 // API to book appointment
 const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
@@ -911,4 +940,5 @@ export {
   updateMedicalRecordForUser,
   getMedicalRecords,
   reviewDoctor,
+  findDoctorFeeByAppointmentId,
 };

@@ -49,6 +49,6 @@ userRouter.get("/medical-records/:userId", authUser, getMedicalRecords);
 userRouter.post("/add-review", authUser, reviewDoctor);
 
 userRouter.post("/create-vnpay-qr", authUser, paymentVNPay);
-userRouter.post("/check-payment-vnpay", authUser, checkPaymentVNPay);
+userRouter.get("/check-payment-vnpay", authUser, checkPaymentVNPay);
 
 export default userRouter;

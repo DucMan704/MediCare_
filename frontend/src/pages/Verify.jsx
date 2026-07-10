@@ -1,53 +1,59 @@
-import axios from 'axios';
-import React, { useContext, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AppContext } from '../context/AppContext';
-import { toast } from 'react-toastify';
+import React, { useEffect, useRef } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { toast } from "react-toastify";
 
-const Verify = () => {
+const ReturnVNPay = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
-    const [searchParams, setSearchParams] = useSearchParams()
+  // Sử dụng useRef để tránh việc useEffect chạy StrictMode bị lặp request 2 lần
+  const isCalled = useRef(false);
 
-    const success = searchParams.get("success")
-    const appointmentId = searchParams.get("appointmentId")
+  useEffect(() => {
+    if (isCalled.current) return;
+    isCalled.current = true;
 
-    const { backendUrl, token } = useContext(AppContext)
+    const backendUrl = import.meta.env.VITE_BACKEND_URL;
+    // Lấy token người dùng từ localStorage (tùy thuộc vào AppContext của bạn)
+    const token = localStorage.getItem("token");
 
-    const navigate = useNavigate()
+    const verifyPayment = async () => {
+      try {
+        // Gửi hộ tống toàn bộ tham số VNPay trả về lên backend xác thực
+        const { data } = await axios.get(
+          `${backendUrl}/api/user/check-payment-vnpay?${searchParams.toString()}`,
+          { headers: { token } },
+        );
 
-    // Function to verify stripe payment
-    const verifyStripe = async () => {
-
-        try {
-
-            const { data } = await axios.post(backendUrl + "/api/user/verifyStripe", { success, appointmentId }, { headers: { token } })
-
-            if (data.success) {
-                toast.success(data.message)
-            } else {
-                toast.error(data.message)
-            }
-
-            navigate("/my-appointments")
-
-        } catch (error) {
-            toast.error(error.message)
-            console.log(error)
+        if (data.success) {
+          toast.success("🎉 Đã thanh toán lịch hẹn thành công!");
+        } else if (data.isCancelled) {
+          toast.info("Bạn đã hủy phiên thanh toán.");
+        } else {
+          toast.error(data.message || "Thanh toán thất bại.");
         }
+      } catch (error) {
+        console.error("Error verifying VNPay payment:", error);
+        toast.error("Đã xảy ra lỗi hệ thống khi xác thực giao dịch.");
+      } finally {
+        // Luôn luôn điều hướng người dùng về lại trang danh sách sau khi thông báo kết thúc
+        navigate("/my-appointments");
+      }
+    };
 
-    }
+    verifyPayment();
+  }, [searchParams, navigate]);
 
-    useEffect(() => {
-        if (token, appointmentId, success) {
-            verifyStripe()
-        }
-    }, [token])
+  return (
+    <div className="flex h-screen flex-col items-center justify-center bg-gray-50">
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      <p className="mt-4 text-sm font-medium text-gray-500">
+        Đang đồng bộ trạng thái giao dịch với hệ thống, vui lòng không tắt trình
+        duyệt...
+      </p>
+    </div>
+  );
+};
 
-    return (
-        <div className='min-h-[60vh] flex items-center justify-center'>
-            <div className="w-20 h-20 border-4 border-gray-300 border-t-4 border-t-primary rounded-full animate-spin"></div>
-        </div>
-    )
-}
-
-export default Verify
+export default ReturnVNPay;
