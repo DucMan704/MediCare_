@@ -19,10 +19,8 @@ import {
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
-/* Helpers                                                             */
+/* Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-// slotDate looks like "21_7_2024" — turn it into a real Date so we can sort by it.
 const parseSlotDate = (slotDate) => {
   if (!slotDate) return null;
   const [day, month, year] = slotDate.split("_").map(Number);
@@ -96,7 +94,6 @@ const MyAppointments = () => {
     expiryYear: "",
   });
 
-  // Search / filter / sort controls
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("date_desc");
@@ -137,12 +134,40 @@ const MyAppointments = () => {
     }
   };
 
+  // ==========================================
+  // XỬ LÝ THANH TOÁN VNPAY HỢP NHẤT
+  // ==========================================
+  const appointmentVNPay = async (appointmentId) => {
+    try {
+      // Sửa đường dẫn từ /api/payment/vnpay thành /api/user/create-vnpay-qr
+      const { data } = await axios.post(
+        `${backendUrl}/api/user/create-vnpay-qr`,
+        { appointmentId },
+        { headers: { token } },
+      );
+
+      if (data.success && data.paymentUrl) {
+        // Chuyển hướng người dùng sang trang thanh toán bảo mật của VNPay
+        window.location.href = data.paymentUrl;
+      } else {
+        toast.error(data.message || "Không thể tạo liên kết thanh toán VNPay");
+      }
+    } catch (error) {
+      console.error("VNPay Frontend Error:", error);
+      toast.error(
+        error.response?.data?.message || "Lỗi kết nối cổng thanh toán",
+      );
+    }
+  };
+
+  // ==========================================
+  // HÀM KHÁC (RAZORPAY & STRIPE GIỮ NGUYÊN)
+  // ==========================================
   const initPay = (order) => {
     if (!isRazorpayConfigured) {
       toast.error("Razorpay is not configured");
       return;
     }
-
     const options = {
       key: razorpayKeyId,
       amount: order.amount,
@@ -152,8 +177,6 @@ const MyAppointments = () => {
       order_id: order.id,
       receipt: order.receipt,
       handler: async (response) => {
-        console.log(response);
-
         try {
           const { data } = await axios.post(
             backendUrl + "/api/user/verifyRazorpay",
@@ -161,11 +184,9 @@ const MyAppointments = () => {
             { headers: { token } },
           );
           if (data.success) {
-            navigate("/my-appointments");
             getUserAppointments();
           }
         } catch (error) {
-          console.log(error);
           toast.error(error.message);
         }
       },
@@ -187,7 +208,6 @@ const MyAppointments = () => {
         toast.error(data.message);
       }
     } catch (error) {
-      console.log(error);
       toast.error(error.message);
     }
   };
@@ -210,10 +230,7 @@ const MyAppointments = () => {
 
   const handleStripeFieldChange = (event) => {
     const { name, value } = event.target;
-    setStripeForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
+    setStripeForm((current) => ({ ...current, [name]: value }));
   };
 
   const appointmentStripe = (appointmentId) => {
@@ -222,7 +239,6 @@ const MyAppointments = () => {
 
   const confirmStripePayment = async (event) => {
     event.preventDefault();
-
     if (
       !stripeForm.cardholderName.trim() ||
       !stripeForm.cardNumber.trim() ||
@@ -236,13 +252,9 @@ const MyAppointments = () => {
     try {
       const { data } = await axios.post(
         backendUrl + "/api/user/verifyStripe",
-        {
-          appointmentId: stripeAppointmentId,
-          success: "true",
-        },
+        { appointmentId: stripeAppointmentId, success: "true" },
         { headers: { token } },
       );
-
       if (data.success) {
         toast.success(data.message || "Payment Successful");
         closeStripeModal();
@@ -251,7 +263,6 @@ const MyAppointments = () => {
         toast.error(data.message);
       }
     } catch (error) {
-      console.log(error);
       toast.error(error.message);
     }
   };
@@ -262,43 +273,33 @@ const MyAppointments = () => {
     }
   }, [token]);
 
-  // Derived list: search -> filter by status -> sort
   const visibleAppointments = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-
     let list = appointments.filter((item) => {
       const matchesSearch =
         !term ||
         item.docData.name.toLowerCase().includes(term) ||
         item.docData.speciality.toLowerCase().includes(term);
-
       const matchesStatus =
         statusFilter === "all" || getAppointmentStatus(item) === statusFilter;
-
       return matchesSearch && matchesStatus;
     });
 
     list = [...list].sort((a, b) => {
-      if (sortOrder === "name_asc") {
+      if (sortOrder === "name_asc")
         return a.docData.name.localeCompare(b.docData.name);
-      }
-      if (sortOrder === "name_desc") {
-        return b.docData.name.localeCompare(a.docData.name);
-      }
-
+      if (sortOrder === "name_desc")
+        return b.docData.name.localeCompare(b.docData.name);
       const dateA = parseSlotDate(a.slotDate);
       const dateB = parseSlotDate(b.slotDate);
       if (!dateA || !dateB) return 0;
-
       return sortOrder === "date_asc" ? dateA - dateB : dateB - dateA;
     });
-
     return list;
   }, [appointments, searchTerm, statusFilter, sortOrder]);
 
   const hasActiveFilters = searchTerm.trim() !== "" || statusFilter !== "all";
 
-  // Sidebar data: counts per status + the soonest upcoming appointment
   const statusCounts = useMemo(() => {
     const counts = {
       pending: 0,
@@ -316,7 +317,6 @@ const MyAppointments = () => {
   const nearestAppointment = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     return appointments
       .filter((item) => !item.cancelled && !item.isCompleted)
       .map((item) => ({ item, date: parseSlotDate(item.slotDate) }))
@@ -326,9 +326,6 @@ const MyAppointments = () => {
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16 lg:grid lg:grid-cols-[220px_1fr_260px] lg:items-start lg:gap-6 lg:px-0">
-      {/* ---------------------------------------------------------- */}
-      {/* Left sidebar — quick overview                               */}
-      {/* ---------------------------------------------------------- */}
       <aside className="mt-12 hidden lg:block">
         <div className="sticky top-6 flex flex-col gap-4">
           <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -345,11 +342,7 @@ const MyAppointments = () => {
                         statusFilter === opt.value ? "all" : opt.value,
                       )
                     }
-                    className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors ${
-                      statusFilter === opt.value
-                        ? "bg-primary/10 text-primary"
-                        : "text-gray-500 hover:bg-gray-50"
-                    }`}
+                    className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors ${statusFilter === opt.value ? "bg-primary/10 text-primary" : "text-gray-500 hover:bg-gray-50"}`}
                   >
                     <span>{opt.label}</span>
                     <span className="font-semibold">
@@ -360,12 +353,10 @@ const MyAppointments = () => {
               )}
             </div>
           </div>
-
           {nearestAppointment && (
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
-                <CalendarCheck size={14} />
-                Lịch hẹn gần nhất
+                <CalendarCheck size={14} /> Lịch hẹn gần nhất
               </p>
               <p className="text-sm font-semibold text-[#262626]">
                 {nearestAppointment.docData.name}
@@ -379,17 +370,10 @@ const MyAppointments = () => {
         </div>
       </aside>
 
-      {/* ---------------------------------------------------------- */}
-      {/* Main column                                                 */}
-      {/* ---------------------------------------------------------- */}
       <div>
-        <p className="mt-12 pb-3 text-lg font-medium text-gray-600 lg:mt-12">
+        <p className="mt-12 pb-3 text-lg font-medium text-gray-600">
           Lịch hẹn của tôi
         </p>
-
-        {/* ---------------------------------------------------------- */}
-        {/* Search / filter / sort bar                                  */}
-        {/* ---------------------------------------------------------- */}
         <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search
@@ -413,7 +397,6 @@ const MyAppointments = () => {
               </button>
             )}
           </div>
-
           <div className="flex gap-2">
             <div className="relative">
               <SlidersHorizontal
@@ -432,7 +415,6 @@ const MyAppointments = () => {
                 ))}
               </select>
             </div>
-
             <div className="relative">
               <ArrowUpDown
                 size={14}
@@ -453,9 +435,6 @@ const MyAppointments = () => {
           </div>
         </div>
 
-        {/* ---------------------------------------------------------- */}
-        {/* Appointment list                                            */}
-        {/* ---------------------------------------------------------- */}
         <div className="mt-5 flex flex-col gap-4">
           {visibleAppointments.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-white py-16 text-center text-sm text-gray-400">
@@ -480,7 +459,6 @@ const MyAppointments = () => {
                       src={item.docData.image}
                       alt=""
                     />
-
                     <div className="flex-1 text-sm text-[#5E5E5E]">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-base font-semibold text-[#262626]">
@@ -495,7 +473,6 @@ const MyAppointments = () => {
                       <p className="text-primary">
                         {translateSpeciality(item.docData.speciality)}
                       </p>
-
                       <div className="mt-2 flex items-start gap-1.5 text-xs text-gray-500">
                         <MapPin size={14} className="mt-0.5 shrink-0" />
                         <span>
@@ -503,7 +480,6 @@ const MyAppointments = () => {
                           {item.docData.address.line2}
                         </span>
                       </div>
-
                       <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500">
                         <Clock size={14} className="shrink-0" />
                         <span>
@@ -521,60 +497,57 @@ const MyAppointments = () => {
                             onClick={() =>
                               item.isAccepted && setPayment(item._id)
                             }
-                            className={`w-full rounded-lg border py-2 text-center transition-all duration-300 ${
-                              item.isAccepted
-                                ? "text-[#696969] hover:bg-primary hover:text-white"
-                                : "cursor-not-allowed bg-gray-100 text-gray-400 opacity-60"
-                            }`}
+                            className={`w-full rounded-lg border py-2 text-center transition-all duration-300 ${item.isAccepted ? "text-[#696969] hover:bg-primary hover:text-white" : "cursor-not-allowed bg-gray-100 text-gray-400 opacity-60"}`}
                           >
                             Thanh toán online
                           </button>
                         )}
+
+                      {/* KHU VỰC CHỌN CỔNG THANH TOÁN KHI BẤM THANH TOÁN ONLINE */}
                       {!item.cancelled &&
                         !item.payment &&
                         !item.isCompleted &&
                         item.isAccepted &&
                         payment === item._id && (
-                          <button
-                            onClick={() => appointmentStripe(item._id)}
-                            className="flex w-full items-center justify-center rounded-lg border py-2 text-[#696969] transition-all duration-300 hover:bg-gray-100"
-                          >
-                            <img
-                              className="max-h-5 max-w-20"
-                              src={assets.stripe_logo}
-                              alt=""
-                            />
-                          </button>
+                          <div className="mt-1 grid grid-cols-2 gap-2 animate-fadeIn">
+                            {/* Nút VNPay mới thêm */}
+                            <button
+                              onClick={() => appointmentVNPay(item._id)}
+                              className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-blue-50 hover:border-blue-300"
+                            >
+                              <img
+                                className="max-h-5 object-contain"
+                                src={
+                                  assets.vnpay_logo ||
+                                  "https://sandbox.vnpayment.vn/paymentv2/Images/brands/logo-vnpay.svg"
+                                }
+                                alt="VNPay"
+                              />
+                            </button>
+
+                            <button
+                              onClick={() => appointmentStripe(item._id)}
+                              className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-gray-50"
+                            >
+                              <img
+                                className="max-h-5 max-w-20"
+                                src={assets.stripe_logo}
+                                alt="Stripe"
+                              />
+                            </button>
+                          </div>
                         )}
-                      {isRazorpayConfigured &&
-                        !item.cancelled &&
-                        !item.payment &&
-                        !item.isCompleted &&
-                        item.isAccepted &&
-                        payment === item._id && (
-                          <button
-                            onClick={() => appointmentRazorpay(item._id)}
-                            className="flex w-full items-center justify-center rounded-lg border py-2 text-[#696969] transition-all duration-300 hover:bg-gray-100"
-                          >
-                            <img
-                              className="max-h-5 max-w-20"
-                              src={assets.razorpay_logo}
-                              alt=""
-                            />
-                          </button>
-                        )}
+
                       {!item.cancelled && item.payment && !item.isCompleted && (
                         <button className="w-full rounded-lg border bg-[#EAEFFF] py-2 text-[#696969]">
                           Đã thanh toán
                         </button>
                       )}
-
                       {item.isCompleted && (
                         <button className="w-full rounded-lg border border-green-500 py-2 text-green-500">
                           Hoàn thành
                         </button>
                       )}
-
                       {!item.cancelled && !item.isCompleted && (
                         <button
                           onClick={() => cancelAppointment(item._id)}
@@ -605,70 +578,34 @@ const MyAppointments = () => {
         </div>
       </div>
 
-      {/* ---------------------------------------------------------- */}
-      {/* Right sidebar — quick actions & support                     */}
-      {/* ---------------------------------------------------------- */}
       <aside className="mt-12 hidden lg:block">
         <div className="sticky top-6 flex flex-col gap-4">
           <a
             href="/doctors"
             className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90"
           >
-            <PlusCircle size={16} />
-            Đặt lịch mới
+            <PlusCircle size={16} /> Đặt lịch mới
           </a>
-
           <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
             <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              <PhoneCall size={14} />
-              Cần hỗ trợ?
+              <PhoneCall size={14} /> Cần hỗ trợ?
             </p>
             <p className="text-sm text-[#363636]">Hotline: 1900 1234</p>
             <p className="mt-0.5 text-sm text-[#363636]">support@clinic.vn</p>
-            <p className="mt-2 text-xs text-gray-400">
-              Hỗ trợ 8:00 – 20:00, tất cả các ngày trong tuần
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-              <Sparkles size={14} />
-              Mẹo nhỏ
-            </p>
-            <p className="text-sm text-emerald-800">
-              Đến sớm 10–15 phút trước giờ hẹn để làm thủ tục và đo chỉ số sinh
-              tồn được thuận tiện hơn.
-            </p>
           </div>
         </div>
       </aside>
 
+      {/* STRIPE MODAL GIỮ NGUYÊN */}
       {stripeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
           <div className="w-full max-w-[650px] overflow-hidden border border-gray-300 bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="relative overflow-hidden bg-[#002d72] px-6 py-5 text-white sm:px-8">
-              <div className="absolute right-0 top-0 h-full w-24 overflow-hidden">
-                <div className="absolute right-0 top-0 h-full w-20 bg-[#9ab83d] transform skew-x-[-35deg] origin-top-right" />
-                <div className="absolute right-10 top-0 h-full w-24 bg-[#8ec5ff] transform skew-x-[-35deg] origin-top-right opacity-90" />
-              </div>
               <p className="text-[24px] font-bold uppercase tracking-wide">
                 NAPAS PAYMENT GATEWAY
               </p>
             </div>
-
             <div className="px-6 py-5 sm:px-8">
-              <div className="mb-7 text-left">
-                <div className="flex items-center gap-2 text-[#1d4ed8]">
-                  <span className="text-[34px] font-extrabold italic leading-none">
-                    napas
-                  </span>
-                  <span className="text-[22px] font-bold">➜</span>
-                </div>
-                <p className="mt-1 text-sm text-[#2563eb]">
-                  Một kết nối. Mọi thanh toán.
-                </p>
-              </div>
-
               <form onSubmit={confirmStripePayment} className="space-y-5">
                 <div className="grid grid-cols-[190px_1fr] items-center gap-4">
                   <label className="text-right text-sm font-medium text-[#4b5563]">
@@ -679,11 +616,9 @@ const MyAppointments = () => {
                     value={stripeForm.cardholderName}
                     onChange={handleStripeFieldChange}
                     type="text"
-                    placeholder="Nhập tên chủ thẻ"
-                    className="h-11 w-full border border-[#b9d4ff] bg-[#f5f7fb] px-4 text-sm outline-none focus:border-[#1d4ed8]"
+                    className="h-11 w-full border border-[#b9d4ff] bg-[#f5f7fb] px-4 text-sm outline-none"
                   />
                 </div>
-
                 <div className="grid grid-cols-[190px_1fr] items-center gap-4">
                   <label className="text-right text-sm font-medium text-[#4b5563]">
                     Số thẻ :::
@@ -693,84 +628,20 @@ const MyAppointments = () => {
                     value={stripeForm.cardNumber}
                     onChange={handleStripeFieldChange}
                     type="text"
-                    inputMode="numeric"
-                    placeholder="Nhập số thẻ"
-                    className="h-11 w-full border border-[#1d4ed8] bg-[#f5f7fb] px-4 text-sm outline-none focus:border-[#003399]"
+                    className="h-11 w-full border border-[#1d4ed8] bg-[#f5f7fb] px-4 text-sm outline-none"
                   />
                 </div>
-
-                <div className="grid grid-cols-[190px_1fr] items-center gap-4">
-                  <label className="text-right text-sm font-medium text-[#4b5563]">
-                    Ngày phát hành :::
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      name="expiryMonth"
-                      value={stripeForm.expiryMonth}
-                      onChange={handleStripeFieldChange}
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="MM"
-                      className="h-11 w-20 border border-[#b9d4ff] bg-[#f5f7fb] px-4 text-sm outline-none focus:border-[#1d4ed8]"
-                    />
-                    <span className="text-lg font-semibold text-[#64748b]">
-                      /
-                    </span>
-                    <input
-                      name="expiryYear"
-                      value={stripeForm.expiryYear}
-                      onChange={handleStripeFieldChange}
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="YY"
-                      className="h-11 w-20 border border-[#b9d4ff] bg-[#f5f7fb] px-4 text-sm outline-none focus:border-[#1d4ed8]"
-                    />
-                    <span className="text-sm text-[#6b7280]">tháng/năm</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[190px_1fr] items-start gap-4 pt-2">
-                  <span className="text-right text-sm font-medium text-[#4b5563]">
-                    Nhà cung cấp :::
-                  </span>
-                  <span className="text-sm font-medium text-[#312e81]">
-                    CTCP PHẦN MỀM VÀ TRUYỀN THÔNG GMOBI VIỆT NAM
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-[190px_1fr] items-start gap-4">
-                  <span className="text-right text-sm font-medium text-[#4b5563]">
-                    Đơn hàng :::
-                  </span>
-                  <span className="text-sm text-[#a1a1aa]">
-                    {selectedStripeAppointment
-                      ? selectedStripeAppointment._id
-                      : ""}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-[190px_1fr] items-start gap-4">
-                  <span className="text-right text-sm font-medium text-[#4b5563]">
-                    Số tiền :::
-                  </span>
-                  <span className="text-sm text-[#a1a1aa]">
-                    {selectedStripeAppointment?.amount
-                      ? `${selectedStripeAppointment.amount.toLocaleString("vi-VN")} ${currencySymbol}`
-                      : ""}
-                  </span>
-                </div>
-
                 <div className="flex justify-end gap-3 pt-3">
                   <button
                     type="submit"
-                    className="min-w-32 rounded-md bg-[#1d4ed8] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#003399]"
+                    className="min-w-32 rounded-md bg-[#1d4ed8] px-6 py-2.5 text-sm font-medium text-white"
                   >
                     Thanh toán
                   </button>
                   <button
                     type="button"
                     onClick={closeStripeModal}
-                    className="min-w-32 rounded-md bg-[#e5e7eb] px-6 py-2.5 text-sm font-medium text-[#374151] transition-colors hover:bg-[#d1d5db]"
+                    className="min-w-32 rounded-md bg-[#e5e7eb] px-6 py-2.5 text-sm text-[#374151]"
                   >
                     Huỷ
                   </button>

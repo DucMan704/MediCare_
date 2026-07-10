@@ -42,11 +42,13 @@ import pneumonia_image from "./pneumonia_image.jpg";
 import stroke_image from "./stroke_image.png";
 import skin_image from "./skin_image.jpg";
 import Aidoctor from "./Aidoctor.jpg";
+import vnpay_logo from "./vnpay_logo.png";
 
 export const assets = {
   appointment_img,
   header_img,
   group_profiles,
+  vnpay_logo,
   logo,
   chats_icon,
   verified_icon,

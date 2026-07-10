@@ -1,58 +1,83 @@
-import { VNPay, HashAlgorithm, ProductCode, VnpLocale, dateFormat } from 'vnpay';
-import { ignoreLogger } from 'vnpay';
+import "dotenv/config";
+import {
+  VNPay,
+  HashAlgorithm,
+  ProductCode,
+  VnpLocale,
+  dateFormat,
+  ignoreLogger,
+} from "vnpay";
 
-
-
-
-export const paymentVNPay = async (req, res) => {
- const vnpay = new VNPay({
-    tmnCode: process.env.TMNCODE,
-    secureSecret: process.env.SECURE_SECRET,
-    vnpayHost: 'https://sandbox.vnpayment.vn',
-   // queryDrAndRefundHost: 'https://sandbox.vnpayment.vn', // tùy chọn, trường hợp khi url của querydr và refund khác với url khởi tạo thanh toán (thường sẽ sử dụng cho production)
-    testMode: true, // tùy chọn, ghi đè vnpayHost thành sandbox nếu là true
-    hashAlgorithm: 'SHA512', // tùy chọn
-   // enableLog: true, // tùy chọn
-    loggerFn: ignoreLogger, // tùy chọn
+// 1. Khởi tạo cấu hình VNPay dùng chung cho toàn bộ file controller
+const vnpay = new VNPay({
+  tmnCode: process.env.TMNCODE,
+  secureSecret: process.env.SECURE_SECRET,
+  vnpayHost: "https://sandbox.vnpayment.vn",
+  testMode: true, // Ép buộc chạy môi trường Sandbox thử nghiệm
+  hashAlgorithm: "SHA512",
+  loggerFn: ignoreLogger,
 });
 
+// API: Khởi tạo đường dẫn thanh toán VNPay
+export const paymentVNPay = async (req, res) => {
+  try {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
 
- const paymentUrl = vnpay.buildPaymentUrl({
-    vnp_Amount: 10000,
-    vnp_IpAddr: '13.160.92.202',
-    vnp_TxnRef: '123456',
-    vnp_OrderInfo: 'Thanh toan don hang 123456',
-    vnp_OrderType: ProductCode.Other,
-    vnp_ReturnUrl: 'http://localhost:3000/vnpay-return',
-    vnp_Locale: VnpLocale.VN, 
-    vnp_CreateDate: dateFormat(new Date()), // tùy chọn, mặc định là thời gian hiện tại
-    vnp_ExpireDate: dateFormat(tomorrow), // tùy chọn
-});
+    // Xây dựng URL thanh toán (Cần thay thế các giá trị cứng bằng dữ liệu thực tế từ req.body nếu cần)
+    const paymentUrl = vnpay.buildPaymentUrl({
+      vnp_Amount: 10000, // Số tiền (Đơn vị: VND, thư viện tự nhân 100 theo yêu cầu VNPay)
+      vnp_IpAddr: req.ip || "127.0.0.1", // Lấy IP thực tế của client thay vì gán cứng
+      vnp_TxnRef: String(Date.now()), // Tạo mã đơn hàng duy nhất bằng timestamp để tránh trùng lặp
+      vnp_OrderInfo: "Thanh toan don hang bang VNPay",
+      vnp_OrderType: ProductCode.Other,
+      vnp_ReturnUrl: "http://localhost:3000/vnpay-return", // URL Front-end nhận kết quả
+      vnp_Locale: VnpLocale.VN,
+      vnp_CreateDate: dateFormat(new Date()),
+      vnp_ExpireDate: dateFormat(tomorrow),
+    });
 
-    return res.status(200).json({ paymentUrl });
-}
+    return res.status(200).json({ success: true, paymentUrl });
+  } catch (error) {
+    console.error("Payment VNPay Error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
+  }
+};
 
+// API: Kiểm tra dữ liệu trả về từ URL (Return URL)
 export const checkPaymentVNPay = async (req, res) => {
-    let verify
-    try {
-        // Sử dụng try-catch để bắt lỗi nếu query không hợp lệ hoặc thiếu dữ liệu
-        console.log(req.querry);
-        verify = vnpay.verifyReturnUrl(req.query);
-        if (!verify.isVerified) {
-            return res.send('Xác thực tính toàn vẹn dữ liệu thất bại');
-        }
-        if (!verify.isSuccess) {
-            return res.send('Đơn hàng thanh toán thất bại');
-        }
-    } catch (error) {
-        return res.send('Dữ liệu không hợp lệ');
+  try {
+    // Sửa lỗi chính tả req.querry -> req.query
+    const queryData = req.query;
+
+    // Xác thực tính toàn vẹn và chữ ký của dữ liệu trả về từ VNPay
+    const verify = vnpay.verifyReturnUrl(queryData);
+
+    if (!verify.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Xác thực tính toàn vẹn dữ liệu thất bại",
+      });
     }
 
-    // Kiểm tra thông tin đơn hàng và xử lý tương ứng
-    // Chỉ xử lý liên quan đến UI ở đây, không xử lý logic kinh doanh
-    // Logic kinh doanh quan trọng phải được xử lý ở phía server bằng IPN
+    if (!verify.isSuccess) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Đơn hàng thanh toán thất bại" });
+    }
 
-    return res.send('Xác thực URL trả về thành công');
-}
+    // Xác thực thành công (Lưu ý: Chỉ xử lý giao diện hiển thị cho Client tại đây)
+    return res.status(200).json({
+      success: true,
+      message: "Xác thực URL trả về thành công",
+      data: verify,
+    });
+  } catch (error) {
+    console.error("Verify VNPay Return Error:", error);
+    return res
+      .status(400)
+      .json({ success: false, message: "Dữ liệu không hợp lệ" });
+  }
+};

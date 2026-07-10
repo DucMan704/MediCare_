@@ -8,8 +8,72 @@ import Session from "../models/sessionModel.js";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
-const ACCESS_TOKEN_TTL = "30m";
+// Cấu hình thời gian sống của Token
+const ACCESS_TOKEN_TTL = "30m"; // Đồng bộ hóa xuống jwt.sign ở dưới
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
+
+export const refreshToken = async (req, res) => {
+  try {
+    const token = req.cookies?.refreshToken;
+
+    if (!token) {
+      return res
+        .status(401)
+        .json({ message: "Access Denied: No refresh token provided" });
+    }
+
+    // 1. Xác thực cấu trúc và chữ ký của JWT Refresh Token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    } catch (err) {
+      if (err.name === "TokenExpiredError") {
+        return res
+          .status(403)
+          .json({ message: "Access Denied: Refresh token expired" });
+      }
+      return res
+        .status(403)
+        .json({ message: "Access Denied: Invalid token structure" });
+    }
+
+    // 2. Kiểm tra phiên làm việc (Session) trong Database
+    const session = await Session.findOne({ refreshToken: token });
+
+    if (!session) {
+      return res
+        .status(403)
+        .json({ message: "Access Denied: Invalid refresh token" });
+    }
+
+    // 3. Kiểm tra thời gian hết hạn lưu trong DB (Dự phòng bảo mật song song)
+    if (session.expiresAt < new Date()) {
+      await Session.deleteOne({ _id: session._id });
+      return res
+        .status(403)
+        .json({ message: "Access Denied: Refresh token expired" });
+    }
+
+    // 4. Kiểm tra sự tồn tại của Doctor trong hệ thống
+    const doctor = await doctorModel.findById(session.userId);
+    if (!doctor) {
+      return res.status(404).json({ message: "Doctor not found" });
+    }
+
+    // 5. Tạo Access Token mới (Sử dụng biến cấu hình ACCESS_TOKEN_TTL)
+    const newAccessToken = jwt.sign(
+      { id: doctor._id, role: "doctor" },
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_TTL },
+    );
+
+    // 6. Trả kết quả về cho Client thành công
+    return res.status(200).json({ accessToken: newAccessToken });
+  } catch (error) {
+    console.error("Refresh Token Error:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
 const parseSlotDate = (slotDate) => {
   const [day, month, year] = slotDate.split("_").map(Number);

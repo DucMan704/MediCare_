@@ -4,6 +4,72 @@ import { toast } from "react-toastify";
 
 export const DoctorContext = createContext();
 
+// Lấy URL backend từ biến môi trường
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+// Cấu hình bộ đánh chặn (Interceptor) cho toàn bộ request Axios của Doctor
+axios.interceptors.response.use(
+  (response) => {
+    // Nếu API gọi thành công, trả về kết quả bình thường
+    return response;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Nếu Backend báo lỗi 401 hoặc 403 (Token hết hạn/lỗi) và chưa thử refresh lần nào
+    if (
+      error.response &&
+      (error.response.status === 401 || error.response.status === 403) &&
+      !originalRequest._retry
+    ) {
+      originalRequest._retry = true; // Đánh dấu để không bị lặp vô hạn nếu refresh thất bại
+
+      try {
+        // 1. Tự động gọi API refresh-token dành cho Doctor ở Backend
+        // Sử dụng với credentials để gửi kèm cookie HttpOnly chứa refreshToken
+        const { data } = await axios.post(
+          `${backendUrl}/api/doctor/refresh-token`,
+          {},
+          { withCredentials: true },
+        );
+
+        // Khớp với dữ liệu trả về từ hàm backend (res.json({ accessToken }))
+        if (data && data.accessToken) {
+          const newAccessToken = data.accessToken;
+
+          // 2. Lưu Access Token mới vào Local Storage (dùng dToken để phân biệt với user)
+          localStorage.setItem("dToken", newAccessToken);
+
+          // 3. Cập nhật lại header cho request bị lỗi lúc nãy
+          // Lưu ý: Đổi tên header 'token' hoặc 'Authorization' tùy thuộc vào Middleware xác thực ở Backend của bạn
+          originalRequest.headers["token"] = newAccessToken;
+
+          // 4. Thực hiện lại request cũ với token mới
+          return axios(originalRequest);
+        }
+      } catch (refreshError) {
+        // NẾU REFRESH TOKEN CŨNG HẾT HẠN HOẶC HỢP LỆ (Bị xóa trong DB)
+        console.warn("Phiên đăng nhập của Bác sĩ đã hết hạn hoàn toàn!");
+
+        // Xóa sạch token cũ của doctor
+        localStorage.removeItem("dToken");
+
+        toast.error("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại!");
+
+        // Chuyển hướng bác sĩ về trang đăng nhập dành riêng cho doctor
+        setTimeout(() => {
+          window.location.href = "/doctor-login";
+        }, 1500);
+
+        return Promise.reject(refreshError);
+      }
+    }
+
+    // Các lỗi khác (500, 404, 400...) thì trả về bình thường
+    return Promise.reject(error);
+  },
+);
+
 const DoctorContextProvider = (props) => {
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
