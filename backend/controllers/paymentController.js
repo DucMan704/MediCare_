@@ -1,32 +1,36 @@
-import { VNPay, HashAlgorithm, ProductCode, VnpLocale, dateFormat } from 'vnpay';
-import { ignoreLogger } from 'vnpay';
+import {
+  VNPay,
+  HashAlgorithm,
+  ProductCode,
+  VnpLocale,
+  dateFormat,
+  ignoreLogger,
+} from "vnpay";
+import { ignoreLogger } from "vnpay";
 import vnpay from "../config/vnpay.js";
 import "dotenv/config";
-
-import { VNPay, ProductCode, VnpLocale, dateFormat, ignoreLogger } from "vnpay";
 
 import { findDoctorFeeByAppointmentId } from "./userController.js";
 
 import appointmentModel from "../models/appointmentModel.js";
 
 export const paymentVNPay = async (req, res) => {
- 
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
- const txnRef = Date.now().toString();
- const paymentUrl = vnpay.buildPaymentUrl({
+  const txnRef = Date.now().toString();
+  const paymentUrl = vnpay.buildPaymentUrl({
     vnp_Amount: 10000,
-    vnp_IpAddr: '13.160.92.202',
+    vnp_IpAddr: "13.160.92.202",
     vnp_TxnRef: txnRef,
     vnp_OrderInfo: `Thanh toan don hang ${txnRef}`,
     vnp_OrderType: ProductCode.Other,
-    vnp_ReturnUrl: 'https://medicare-for-user.vercel.app/return-vnpay',
-    vnp_Locale: VnpLocale.VN, 
+    vnp_ReturnUrl: "https://medicare-for-user.vercel.app/return-vnpay",
+    vnp_Locale: VnpLocale.VN,
     vnp_CreateDate: dateFormat(new Date()), // tùy chọn, mặc định là thời gian hiện tại
     vnp_ExpireDate: dateFormat(tomorrow), // tùy chọn
-});
+  });
+};
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
