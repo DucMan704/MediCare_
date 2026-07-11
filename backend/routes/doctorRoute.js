@@ -19,7 +19,7 @@ import {
   createMedicalRecordForUser,
   updateMedicalRecordForUser,
 } from "../controllers/userController.js";
-import authDoctor from "../middleware/authDoctor.js";
+import { authDoctor } from "../middleware/authDoctor.js";
 const doctorRouter = express.Router();
 
 doctorRouter.get("/slots/:docId", getDoctorSlots);

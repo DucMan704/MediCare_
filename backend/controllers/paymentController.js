@@ -1,31 +1,24 @@
 import { VNPay, HashAlgorithm, ProductCode, VnpLocale, dateFormat } from 'vnpay';
 import { ignoreLogger } from 'vnpay';
+import vnpay from "../config/vnpay.js";
 
 
 
 
 export const paymentVNPay = async (req, res) => {
- const vnpay = new VNPay({
-    tmnCode: process.env.TMNCODE,
-    secureSecret: process.env.SECURE_SECRET,
-    vnpayHost: 'https://sandbox.vnpayment.vn',
-   // queryDrAndRefundHost: 'https://sandbox.vnpayment.vn', // tùy chọn, trường hợp khi url của querydr và refund khác với url khởi tạo thanh toán (thường sẽ sử dụng cho production)
-    testMode: true, // tùy chọn, ghi đè vnpayHost thành sandbox nếu là true
-    hashAlgorithm: 'SHA512', // tùy chọn
-   // enableLog: true, // tùy chọn
-    loggerFn: ignoreLogger, // tùy chọn
-});
+ 
 
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+ const txnRef = Date.now().toString();
  const paymentUrl = vnpay.buildPaymentUrl({
     vnp_Amount: 10000,
     vnp_IpAddr: '13.160.92.202',
-    vnp_TxnRef: '123456',
-    vnp_OrderInfo: 'Thanh toan don hang 123456',
+    vnp_TxnRef: txnRef,
+    vnp_OrderInfo: `Thanh toan don hang ${txnRef}`,
     vnp_OrderType: ProductCode.Other,
-    vnp_ReturnUrl: 'http://localhost:3000/vnpay-return',
+    vnp_ReturnUrl: 'https://medicare-for-user.vercel.app/return-vnpay',
     vnp_Locale: VnpLocale.VN, 
     vnp_CreateDate: dateFormat(new Date()), // tùy chọn, mặc định là thời gian hiện tại
     vnp_ExpireDate: dateFormat(tomorrow), // tùy chọn
