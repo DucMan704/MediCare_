@@ -51,7 +51,7 @@ export const paymentVNPay = async (req, res) => {
     const vnp_Amount = await findDoctorFeeByAppointmentId(appointmentId);
 
     const paymentUrl = vnpay.buildPaymentUrl({
-      vnp_Amount: 10000,
+      vnp_Amount: vnp_Amount * 100, // VNPay yêu cầu số tiền là số nguyên (đơn vị: đồng), nhân với 100 để chuyển đổi từ VND sang "đồng"
       vnp_IpAddr: "13.160.92.202",
       vnp_TxnRef: `${appointmentId}_${Date.now()}`, // Gộp appointmentId để lúc về tách ra
       vnp_OrderInfo: `Thanh toan lich hen ${appointmentId}`,
