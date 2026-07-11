@@ -325,7 +325,7 @@ const findDoctorFeeByAppointmentId = async (appointmentId) => {
   }
 };
 
-// API to book appointment
+// API to book appointment (Cho phép đặt trùng khung giờ tự do)
 const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -334,42 +334,50 @@ const bookAppointment = async (req, res) => {
     const userId = req.user._id;
     const { docId, slotDate, slotTime } = req.body;
 
-    // khóa atomic cái slot lại
-    //  Bác sĩ phải có và đang available, và slotTime chưa nằm trong mảng của slotDate
+    // 1. Kiểm tra đầu vào cơ bản
+    if (!docId || !slotDate || !slotTime) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing required fields" });
+    }
+
+    // 2. Cập nhật lịch bác sĩ (Bỏ chặn trùng giờ, cho phép đặt tự do)
     const updatedDoctor = await doctorModel
       .findOneAndUpdate(
         {
           _id: docId,
-          available: true,
-          [`slots_booked.${slotDate}`]: { $ne: slotTime },
+          available: true, // Bác sĩ bắt buộc phải đang mở chế độ nhận lịch
         },
         {
-          $push: { [`slots_booked.${slotDate}`]: slotTime },
+          // Dùng $addToSet thay vì $push để mảng lưu duy nhất chuỗi giờ đó,
+          // tránh việc mảng bị trùng lắp ["10:30 AM", "10:30 AM", "10:30 AM"] làm phình DB
+          $addToSet: { [`slots_booked.${slotDate}`]: slotTime },
         },
         { new: true, select: "-password", session },
       )
       .lean();
 
+    // Nếu không cập nhật thành công (Bác sĩ không tồn tại hoặc bận)
     if (!updatedDoctor) {
-      // if update thất bại thif kiểm tra nguyên nhân để trả về lỗi
       const docCheck = await doctorModel.findById(docId).session(session);
       await session.abortTransaction();
       session.endSession();
 
-      if (!docCheck)
+      if (!docCheck) {
         return res
           .status(404)
           .json({ success: false, message: "Doctor not found" });
-      if (!docCheck.available)
+      }
+      if (!docCheck.available) {
         return res
           .status(400)
           .json({ success: false, message: "Doctor Not Available" });
-      return res.status(400).json({
-        success: false,
-        message: "Slot Not Available (Double Booking Prevented)",
-      });
+      }
     }
 
+    // 3. Lấy thông tin người dùng đặt lịch
     const userData = await userModel
       .findById(userId)
       .select("-password")
@@ -379,12 +387,14 @@ const bookAppointment = async (req, res) => {
     if (!userData) {
       await session.abortTransaction();
       session.endSession();
+      // Đã sửa: Thêm return ở đây để tránh treo API
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
 
-    delete updatedDoctor.slots_booked;
+    // 4. Chuẩn bị dữ liệu lịch hẹn
+    delete updatedDoctor.slots_booked; // Xóa bớt data mảng cồng kềnh trước khi lưu vào hóa đơn lịch hẹn
 
     const appointmentData = {
       userId,
@@ -397,19 +407,24 @@ const bookAppointment = async (req, res) => {
       date: Date.now(),
     };
 
+    // 5. Tạo và lưu lịch hẹn mới vào database
     const newAppointment = new appointmentModel(appointmentData);
     await newAppointment.save({ session });
 
+    // 6. Hoàn tất giao dịch (Commit Transaction)
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ success: true, message: "Appointment Booked" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Appointment Booked Successfully" });
   } catch (error) {
+    // Nếu có bất kỳ lỗi hệ thống nào xảy ra, rollback lại toàn bộ dữ liệu sạch sẽ
     await session.abortTransaction();
     session.endSession();
 
-    console.log(error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Book Appointment Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -422,7 +437,7 @@ const listAppointment = async (req, res) => {
     res.json({ success: true, appointments });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -466,12 +481,12 @@ const cancelAppointment = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ success: true, message: "Appointment Cancelled" });
+    return res.json({ success: true, message: "Appointment Cancelled" });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -516,10 +531,10 @@ const paymentRazorpay = async (req, res) => {
     // creation of an order
     const order = await razorpayInstance.orders.create(options);
 
-    res.json({ success: true, order });
+    return res.json({ success: true, order });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -550,13 +565,13 @@ const verifyRazorpay = async (req, res) => {
       await appointmentModel.findByIdAndUpdate(orderInfo.receipt, {
         payment: true,
       });
-      res.json({ success: true, message: "Payment Successful" });
+      return res.json({ success: true, message: "Payment Successful" });
     } else {
-      res.json({ success: false, message: "Payment Failed" });
+      return res.json({ success: false, message: "Payment Failed" });
     }
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -612,10 +627,10 @@ const paymentStripe = async (req, res) => {
       mode: "payment",
     });
 
-    res.json({ success: true, session_url: session.url });
+    return res.json({ success: true, session_url: session.url });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -639,10 +654,10 @@ const verifyStripe = async (req, res) => {
       return res.json({ success: true, message: "Payment Successful" });
     }
 
-    res.json({ success: false, message: "Payment Failed" });
+    return res.json({ success: false, message: "Payment Failed" });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -665,7 +680,7 @@ const getMedicalRecordsByUserId = async (req, res) => {
       },
     });
 
-  res.json({ success: true, medicalRecords });
+  return res.json({ success: true, medicalRecords });
 };
 
 const createMedicalRecordForUser = async (req, res) => {
@@ -749,7 +764,7 @@ const createMedicalRecordForUser = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -831,7 +846,7 @@ const updateMedicalRecordForUser = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 

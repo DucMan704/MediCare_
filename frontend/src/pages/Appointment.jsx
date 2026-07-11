@@ -102,13 +102,13 @@ const Appointment = () => {
     setDocInfo(docInfo);
   };
 
-  const getAvailableSolts = async () => {
+  const getAvailableSlots = async () => {
     try {
       setDocSlots([]);
       setSlotIndex(0);
       setSlotTime("");
 
-      // Lấy các slot còn trống của bác sĩ trong 7 ngày tới (theo lịch bác sĩ đã cấu hình)
+      // 1. Gọi API lấy lịch cấu hình của bác sĩ
       const { data } = await axios.get(
         `${backendUrl}/api/doctor/slots/${docId}`,
         { params: { days: 7 } },
@@ -120,8 +120,8 @@ const Appointment = () => {
       }
 
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const now = new Date();
+      today.setHours(0, 0, 0, 0); // Mốc 00:00:00 hôm nay để tính tịnh tiến 7 ngày
+      const now = new Date(); // Thời gian thực tại để check giờ quá khứ
 
       const groupedByDay = [];
 
@@ -129,6 +129,15 @@ const Appointment = () => {
         const currentDay = new Date(today);
         currentDay.setDate(today.getDate() + i);
 
+        // Tạo chuỗi định dạng ngày chuẩn "DD_MM_YYYY" để đồng bộ với DB (Ví dụ: 26_06_2026)
+        const formattedDay = String(currentDay.getDate()).padStart(2, "0");
+        const formattedMonth = String(currentDay.getMonth() + 1).padStart(
+          2,
+          "0",
+        );
+        const backendSlotDate = `${formattedDay}_${formattedMonth}_${currentDay.getFullYear()}`;
+
+        // Lọc các lịch thuộc ngày đang xét
         const daySchedules = data.schedules.filter((s) => {
           const d = new Date(s.workDate);
           return (
@@ -138,30 +147,39 @@ const Appointment = () => {
           );
         });
 
-        const timeSlots = daySchedules
-          .map((s) => {
-            const [hour, minute] = s.timeSlot.split(":").map(Number);
-            const datetime = new Date(
-              currentDay.getFullYear(),
-              currentDay.getMonth(),
-              currentDay.getDate(),
-              hour,
-              minute,
-              0,
-              0,
-            );
-            return {
-              datetime,
-              time: s.timeSlot,
-              available: s.available,
-              isBooked: s.isBooked,
-            };
-          })
-          // Nếu là hôm nay, tự động ẩn các slot đã qua giờ hiện tại
-          .filter((slot) => slot.datetime > now)
-          .sort((a, b) => a.datetime - b.datetime);
+        let timeSlots = daySchedules.map((s) => {
+          const [hour, minute] = s.timeSlot.split(":").map(Number);
+          const datetime = new Date(
+            currentDay.getFullYear(),
+            currentDay.getMonth(),
+            currentDay.getDate(),
+            hour,
+            minute,
+            0,
+            0,
+          );
+          return {
+            datetime,
+            time: s.timeSlot,
+            available: s.available,
+            isBooked: s.isBooked,
+            backendSlotDate, // Đút kèm chuỗi format sẵn vào đây để Frontend click là lấy xài luôn
+          };
+        });
 
-        groupedByDay.push({ date: currentDay, slots: timeSlots });
+        // BẢO VỆ LOGIC: Chỉ áp dụng lọc bỏ giờ quá khứ NẾU ĐÂY LÀ NGÀY HÔM NAY (i === 0)
+        if (i === 0) {
+          timeSlots = timeSlots.filter((slot) => slot.datetime > now);
+        }
+
+        // Sắp xếp tăng dần theo giờ
+        timeSlots.sort((a, b) => a.datetime - b.datetime);
+
+        groupedByDay.push({
+          date: currentDay,
+          backendSlotDate,
+          slots: timeSlots,
+        });
       }
 
       setDocSlots(groupedByDay);
@@ -204,7 +222,7 @@ const Appointment = () => {
       if (data.success) {
         toast.success(data.message);
         getDoctosData();
-        getAvailableSolts();
+        getAvailableSlots();
         navigate("/my-appointments");
       } else {
         toast.error(data.message);
@@ -289,7 +307,7 @@ const Appointment = () => {
 
   useEffect(() => {
     if (docInfo) {
-      getAvailableSolts();
+      getAvailableSlots();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docInfo]);
