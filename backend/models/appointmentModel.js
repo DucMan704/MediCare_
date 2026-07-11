@@ -13,7 +13,6 @@ const appointmentSchema = new mongoose.Schema({
   isAccepted: { type: Boolean, default: false },
   payment: { type: Boolean, default: false },
   isCompleted: { type: Boolean, default: false },
-  vnpTxnRef: { type: String, default: null },
 });
 
 const appointmentModel =
