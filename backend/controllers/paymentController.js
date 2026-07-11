@@ -20,8 +20,9 @@ export const paymentVNPay = async (req, res) => {
     vnp_OrderType: ProductCode.Other,
     vnp_ReturnUrl: 'https://medicare-for-user.vercel.app/return-vnpay',
     vnp_Locale: VnpLocale.VN, 
-    vnp_CreateDate: dateFormat(new Date()), // tùy chọn, mặc định là thời gian hiện tại
-    vnp_ExpireDate: dateFormat(tomorrow), // tùy chọn
+    vnp_CreateDate: dateFormat(new Date()), 
+    vnp_ExpireDate: dateFormat(tomorrow), 
+    
 });
 
     return res.status(200).json({ paymentUrl });
