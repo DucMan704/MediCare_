@@ -55,6 +55,7 @@ const App = () => {
           <Route path="skin" element={<Skin />} />
           <Route path="skin-predict" element={<SkinPredict />} />
         </Route>
+        <Route path="/return-vnpay" element={<Verify />} />
       </Routes>
       <Footer />
     </div>

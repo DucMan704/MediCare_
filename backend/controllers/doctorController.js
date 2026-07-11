@@ -3,12 +3,77 @@ import bcrypt from "bcrypt";
 import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
+import Review from "../models/reviewModel.js";
 import Session from "../models/sessionModel.js";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
-const ACCESS_TOKEN_TTL = "30m";
+// Cấu hình thời gian sống của Token
+const ACCESS_TOKEN_TTL = "30m"; // Đồng bộ hóa xuống jwt.sign ở dưới
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
+
+export const refreshToken = async (req, res) => {
+  try {
+    const token = req.cookies?.refreshToken;
+
+    if (!token) {
+      return res
+        .status(401)
+        .json({ message: "Access Denied: No refresh token provided" });
+    }
+
+    // 1. Xác thực cấu trúc và chữ ký của JWT Refresh Token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    } catch (err) {
+      if (err.name === "TokenExpiredError") {
+        return res
+          .status(403)
+          .json({ message: "Access Denied: Refresh token expired" });
+      }
+      return res
+        .status(403)
+        .json({ message: "Access Denied: Invalid token structure" });
+    }
+
+    // 2. Kiểm tra phiên làm việc (Session) trong Database
+    const session = await Session.findOne({ refreshToken: token });
+
+    if (!session) {
+      return res
+        .status(403)
+        .json({ message: "Access Denied: Invalid refresh token" });
+    }
+
+    // 3. Kiểm tra thời gian hết hạn lưu trong DB (Dự phòng bảo mật song song)
+    if (session.expiresAt < new Date()) {
+      await Session.deleteOne({ _id: session._id });
+      return res
+        .status(403)
+        .json({ message: "Access Denied: Refresh token expired" });
+    }
+
+    // 4. Kiểm tra sự tồn tại của Doctor trong hệ thống
+    const doctor = await doctorModel.findById(session.userId);
+    if (!doctor) {
+      return res.status(404).json({ message: "Doctor not found" });
+    }
+
+    // 5. Tạo Access Token mới (Sử dụng biến cấu hình ACCESS_TOKEN_TTL)
+    const newAccessToken = jwt.sign(
+      { id: doctor._id, role: "doctor" },
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_TTL },
+    );
+
+    // 6. Trả kết quả về cho Client thành công
+    return res.status(200).json({ accessToken: newAccessToken });
+  } catch (error) {
+    console.error("Refresh Token Error:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
 const parseSlotDate = (slotDate) => {
   const [day, month, year] = slotDate.split("_").map(Number);
@@ -122,8 +187,7 @@ const loginDoctor = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Login successfully",
-      token
-      
+      token,
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -149,8 +213,6 @@ const appointmentsDoctor = async (req, res) => {
   }
 };
 
-
-
 // API to accept appointment for doctor panel
 const appointmentAccept = async (req, res) => {
   try {
@@ -160,7 +222,7 @@ const appointmentAccept = async (req, res) => {
     const appointmentData = await appointmentModel.findById(appointmentId);
     if (
       appointmentData &&
-      appointmentData.docId === docId &&
+      appointmentData.docId.toString() === docId.toString() &&
       !appointmentData.cancelled
     ) {
       await appointmentModel.findByIdAndUpdate(appointmentId, {
@@ -182,7 +244,9 @@ const appointmentAccept = async (req, res) => {
         { upsert: true },
       );
 
-      return res.status(200).json({ success: true, message: "Appointment Accepted" });
+      return res
+        .status(200)
+        .json({ success: true, message: "Appointment Accepted" });
     }
 
     res.status(404).json({ success: false, message: "Appointment Not Found" });
@@ -192,12 +256,13 @@ const appointmentAccept = async (req, res) => {
   }
 };
 
-
-
 // API to get all doctors list for Frontend
 const doctorList = async (req, res) => {
   try {
-    const doctors = await doctorModel.find({}).select(["-password", "-email"]).lean();
+    const doctors = await doctorModel
+      .find({})
+      .select(["-password", "-email"])
+      .lean();
     res.status(200).json({ success: true, doctors });
   } catch (error) {
     console.log(error);
@@ -225,7 +290,10 @@ const changeAvailablity = async (req, res) => {
 const doctorProfile = async (req, res) => {
   try {
     const docId = req.doctor._id;
-    const profileData = await doctorModel.findById(docId).select("-password").lean();
+    const profileData = await doctorModel
+      .findById(docId)
+      .select("-password")
+      .lean();
 
     res.status(200).json({ success: true, profileData });
   } catch (error) {
@@ -408,133 +476,160 @@ const getDoctorSlots = async (req, res) => {
   }
 };
 
+const getDoctorReview = async (req, res) => {
+  try {
+    // B1: Lấy docId từ params
+    const { docId } = req.params;
+
+    // B2: Tìm tất cả review của bác sĩ đó, sắp xếp theo createdAt giảm dần,
+    // populate userId để lấy name và image
+    const reviews = await Review.find({ doctorId: docId })
+      .sort({ createdAt: -1 })
+      .populate("userId", "name image");
+
+    // B3: Trả về danh sách review
+    return res.json({ success: true, reviews });
+  } catch (error) {
+    // B4: Xử lý lỗi
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
 const appointmentComplete = async (req, res) => {
-    try {
-        const docId = req.doctor._id;
-        const { appointmentId } = req.body;
+  try {
+    const docId = req.doctor._id;
+    const { appointmentId } = req.body;
 
-        const appointment = await appointmentModel.findById(appointmentId);
+    const appointment = await appointmentModel.findById(appointmentId);
 
-        if (!appointment) {
-            return res.status(404).json({
-                success: false,
-                message: "Appointment not found",
-            });
-        }
-
-        if (appointment.docId !== docId) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized action",
-            });
-        }
-
-        if (appointment.cancelled) {
-            return res.status(400).json({
-                success: false,
-                message: "Appointment has been cancelled",
-            });
-        }
-
-        if (appointment.isCompleted) {
-            return res.status(400).json({
-                success: false,
-                message: "Appointment already completed",
-            });
-        }
-
-        appointment.isCompleted = true;
-        await appointment.save();
-
-        res.json({
-            success: true,
-            message: "Appointment completed successfully",
-        });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
     }
+
+    if (appointment.docId !== docId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized action",
+      });
+    }
+
+    if (appointment.cancelled) {
+      return res.status(400).json({
+        success: false,
+        message: "Appointment has been cancelled",
+      });
+    }
+
+    if (appointment.isCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Appointment already completed",
+      });
+    }
+
+    appointment.isCompleted = true;
+    await appointment.save();
+
+    res.json({
+      success: true,
+      message: "Appointment completed successfully",
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
 const appointmentCancel = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    try {
-        const docId = req.doctor._id;
-        const { appointmentId } = req.body;
+  try {
+    const docId = req.doctor._id;
+    const { appointmentId } = req.body;
 
-        //  Kiểm tra lịch khám
-        const appointment = await appointmentModel.findById(appointmentId).session(session);
+    //  Kiểm tra lịch khám
+    const appointment = await appointmentModel
+      .findById(appointmentId)
+      .session(session);
 
-        if (!appointment) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(404).json({
-                success: false,
-                message: "Appointment not found"
-            });
-        }
-
-        //  Kiểm tra bác sĩ có quyền hủy k
-        if (appointment.docId !== docId) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized action"
-            });
-        }
-
-        //  Đã hủy rồi
-        if (appointment.cancelled) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(400).json({
-                success: false,
-                message: "Appointment already cancelled"
-            });
-        }
-
-        // cuộc hẹn đã hoàn thành thì không được hủy
-        if (appointment.isCompleted) {
-            await session.abortTransaction();
-            session.endSession();
-            return res.status(400).json({
-                success: false,
-                message: "Completed appointment cannot be cancelled"
-            });
-        }
-
-        appointment.cancelled = true;
-        await appointment.save({ session });
-
-        // xóa slot đã hẹn 
-        await doctorModel.findByIdAndUpdate(docId, {
-            $pull: { [`slots_booked.${appointment.slotDate}`]: appointment.slotTime }
-        }, { session });
-
-        await session.commitTransaction();
-        session.endSession();
-
-        return res.json({
-            success: true,
-            message: "Appointment cancelled successfully"
-        });
-
-    } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
-        console.log(error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    if (!appointment) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
     }
+
+    //  Kiểm tra bác sĩ có quyền hủy k
+    if (appointment.docId !== docId) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized action",
+      });
+    }
+
+    //  Đã hủy rồi
+    if (appointment.cancelled) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Appointment already cancelled",
+      });
+    }
+
+    // cuộc hẹn đã hoàn thành thì không được hủy
+    if (appointment.isCompleted) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Completed appointment cannot be cancelled",
+      });
+    }
+
+    appointment.cancelled = true;
+    await appointment.save({ session });
+
+    // xóa slot đã hẹn
+    await doctorModel.findByIdAndUpdate(
+      docId,
+      {
+        $pull: {
+          [`slots_booked.${appointment.slotDate}`]: appointment.slotTime,
+        },
+      },
+      { session },
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.json({
+      success: true,
+      message: "Appointment cancelled successfully",
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
 export {
@@ -551,4 +646,5 @@ export {
   updateDoctorProfile,
   updateAvailability,
   getAvailability,
+  getDoctorReview,
 };

@@ -187,6 +187,7 @@ const AdminContextProvider = (props) => {
     deleteDoctor,
     getDoctorById,
     updateDoctor,
+    backendUrl,
   };
 
   return (

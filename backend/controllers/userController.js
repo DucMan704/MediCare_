@@ -10,6 +10,7 @@ import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
 import MedicalRecord from "../models/medicalRecordModel.js";
 import userMedicalRecordModel from "../models/userMedicalRecordModel.js";
+import reviewModel from "../models/reviewModel.js";
 import { v2 as cloudinary } from "cloudinary";
 import stripe from "stripe";
 import razorpay from "razorpay";
@@ -195,7 +196,7 @@ const logoutUser = async (req, res) => {
   }
 };
 
-export const authMe = async (req, res) => {
+const authMe = async (req, res) => {
   return res.status(200).json({
     success: true,
     user: req.user,
@@ -203,9 +204,8 @@ export const authMe = async (req, res) => {
   });
 };
 
-
 //refresh token
-  const refreshToken = async (req, res) => {
+const refreshToken = async (req, res) => {
   try {
     // lấy refresh token từ cookie
     const token = req.cookies?.refreshToken;
@@ -248,7 +248,10 @@ export const authMe = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = req.user._id;
-    const userData = await userModel.findById(userId).select("-password").lean();
+    const userData = await userModel
+      .findById(userId)
+      .select("-password")
+      .lean();
 
     res.status(200).json({ success: true, userData });
   } catch (error) {
@@ -293,6 +296,35 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const findDoctorFeeByAppointmentId = async (appointmentId) => {
+  try {
+    // B1 & B2: Tìm cuộc hẹn và chỉ lấy trường docId
+    const appointment = await appointmentModel
+      .findById(appointmentId)
+      .select("docId")
+      .lean();
+
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+
+    // B3 & B4: Tìm bác sĩ và chỉ lấy trường fees
+    const doctor = await doctorModel
+      .findById(appointment.docId)
+      .select("fees")
+      .lean();
+
+    if (!doctor) {
+      throw new Error("Doctor not found");
+    }
+
+    return doctor.fees;
+  } catch (error) {
+    console.error("Error in findDoctorFeeByAppointmentId:", error.message);
+    throw error; // Throw ra ngoài để Controller cấp cao hơn bọc và res.json() lỗi
+  }
+};
+
 // API to book appointment
 const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
@@ -302,37 +334,54 @@ const bookAppointment = async (req, res) => {
     const userId = req.user._id;
     const { docId, slotDate, slotTime } = req.body;
 
-    // khóa atomic cái slot lại 
+    // khóa atomic cái slot lại
     //  Bác sĩ phải có và đang available, và slotTime chưa nằm trong mảng của slotDate
-    const updatedDoctor = await doctorModel.findOneAndUpdate(
-      { 
-        _id: docId, 
-        available: true,
-        [`slots_booked.${slotDate}`]: { $ne: slotTime } 
-      },
-      { 
-        $push: { [`slots_booked.${slotDate}`]: slotTime } 
-      },
-      { new: true, select: "-password", session }
-    ).lean();
+    const updatedDoctor = await doctorModel
+      .findOneAndUpdate(
+        {
+          _id: docId,
+          available: true,
+          [`slots_booked.${slotDate}`]: { $ne: slotTime },
+        },
+        {
+          $push: { [`slots_booked.${slotDate}`]: slotTime },
+        },
+        { new: true, select: "-password", session },
+      )
+      .lean();
 
     if (!updatedDoctor) {
-      // if update thất bại thif kiểm tra nguyên nhân để trả về lỗi 
+      // if update thất bại thif kiểm tra nguyên nhân để trả về lỗi
       const docCheck = await doctorModel.findById(docId).session(session);
       await session.abortTransaction();
       session.endSession();
 
-      if (!docCheck) return res.status(404).json({ success: false, message: "Doctor not found" });
-      if (!docCheck.available) return res.status(400).json({ success: false, message: "Doctor Not Available" });
-      return res.status(400).json({ success: false, message: "Slot Not Available (Double Booking Prevented)" });
+      if (!docCheck)
+        return res
+          .status(404)
+          .json({ success: false, message: "Doctor not found" });
+      if (!docCheck.available)
+        return res
+          .status(400)
+          .json({ success: false, message: "Doctor Not Available" });
+      return res.status(400).json({
+        success: false,
+        message: "Slot Not Available (Double Booking Prevented)",
+      });
     }
 
-    const userData = await userModel.findById(userId).select("-password").session(session).lean();
+    const userData = await userModel
+      .findById(userId)
+      .select("-password")
+      .session(session)
+      .lean();
 
     if (!userData) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     delete updatedDoctor.slots_booked;
@@ -358,12 +407,11 @@ const bookAppointment = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    
+
     console.log(error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // API to get user appointments for frontend my-appointments page
 const listAppointment = async (req, res) => {
@@ -385,36 +433,47 @@ const cancelAppointment = async (req, res) => {
   try {
     const userId = req.user._id;
     const { appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId).session(session)
+    const appointmentData = await appointmentModel
+      .findById(appointmentId)
+      .session(session);
 
-    // ktra appointment user 
+    // ktra appointment user
     if (appointmentData.userId.toString() !== userId.toString()) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ success: false, message: 'Unauthorized action' })
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized action" });
     }
 
-    await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true }, { session })
+    await appointmentModel.findByIdAndUpdate(
+      appointmentId,
+      { cancelled: true },
+      { session },
+    );
 
     // releasing doctor slot using atomic $pull operator
-    const { docId, slotDate, slotTime } = appointmentData
+    const { docId, slotDate, slotTime } = appointmentData;
 
-    await doctorModel.findByIdAndUpdate(docId, { 
-      $pull: { [`slots_booked.${slotDate}`]: slotTime } 
-    }, { session })
+    await doctorModel.findByIdAndUpdate(
+      docId,
+      {
+        $pull: { [`slots_booked.${slotDate}`]: slotTime },
+      },
+      { session },
+    );
 
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ success: true, message: 'Appointment Cancelled' })
-
+    res.json({ success: true, message: "Appointment Cancelled" });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.log(error)
-    res.json({ success: false, message: error.message })
+    console.log(error);
+    res.json({ success: false, message: error.message });
   }
-}
+};
 
 // API to make payment of appointment using razorpay
 const paymentRazorpay = async (req, res) => {
@@ -776,6 +835,91 @@ const updateMedicalRecordForUser = async (req, res) => {
   }
 };
 
+const getMedicalRecords = async (req, res) => {
+  try {
+    // B1: Lấy userId từ params
+    const { userId } = req.params;
+
+    // B2: Kiểm tra userId có tồn tại trong cơ sở dữ liệu không
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    // B3: Lấy danh sách hồ sơ y tế của người dùng từ bảng userMedicalRecordModel
+    const medicalRecords = await userMedicalRecordModel
+      .find({ userId })
+      .populate({
+        path: "medicalRecordId",
+        populate: {
+          path: "doctorId",
+          select: "name speciality image",
+        },
+      });
+
+    // B4: Trả về danh sách hồ sơ y tế cho người dùng
+    return res.json({
+      success: true,
+      message: "Lấy danh sách hồ sơ y tế thành công",
+      medicalRecords,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+const reviewDoctor = async (req, res) => {
+  try {
+    // B1: Lấy thông tin từ body và người dùng đã xác thực
+    const { docId, rating, comment } = req.body;
+    const userId = req.body.userId;
+
+    // B2: Kiểm tra thông tin bắt buộc — comment là tùy chọn theo schema (default: "")
+    if (!docId || !rating) {
+      return res.json({
+        success: false,
+        message: "Vui lòng chọn bác sĩ và số sao đánh giá",
+      });
+    }
+
+    const numericRating = Number(rating);
+    if (
+      !Number.isInteger(numericRating) ||
+      numericRating < 1 ||
+      numericRating > 5
+    ) {
+      return res.json({
+        success: false,
+        message: "Đánh giá phải là số nguyên từ 1 đến 5 sao",
+      });
+    }
+
+    // B3: Kiểm tra doctorId có tồn tại trong cơ sở dữ liệu không
+    const doctor = await doctorModel.findById(docId);
+    if (!doctor) {
+      return res.json({ success: false, message: "Bác sĩ không tồn tại" });
+    }
+
+    // B4: Tạo review mới, hoặc cập nhật nếu bệnh nhân đã đánh giá bác sĩ này trước đó
+    const review = await reviewModel.findOneAndUpdate(
+      { userId: userId, doctorId: docId },
+      { rating: numericRating, comment: comment?.trim() || "" },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+
+    // B5: Trả về thông báo thành công
+    return res.json({
+      success: true,
+      message: "Đánh giá bác sĩ thành công",
+      review,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
 export {
   loginUser,
   registerUser,
@@ -793,4 +937,7 @@ export {
   getMedicalRecordsByUserId,
   createMedicalRecordForUser,
   updateMedicalRecordForUser,
+  getMedicalRecords,
+  reviewDoctor,
+  findDoctorFeeByAppointmentId,
 };

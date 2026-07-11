@@ -3,62 +3,34 @@ import { DoctorContext } from "../../context/DoctorContext";
 import { AppContext } from "../../context/AppContext";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { defaultTimeSlots, monthNamesVi, weekDaysVi } from "../../utils/i18n";
+// Thêm dòng import này ở đầu file của bạn
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CalendarDays,
+  Clock,
+  Save,
+  CalendarPlus,
+  CheckCircle2,
+  Info,
+} from "lucide-react";
 
-const monthNamesVi = [
-  "Tháng 1",
-  "Tháng 2",
-  "Tháng 3",
-  "Tháng 4",
-  "Tháng 5",
-  "Tháng 6",
-  "Tháng 7",
-  "Tháng 8",
-  "Tháng 9",
-  "Tháng 10",
-  "Tháng 11",
-  "Tháng 12",
-];
-
-const weekDaysVi = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
-
-const defaultTimeSlots = [
-  "08:00",
-  "08:30",
-  "09:00",
-  "09:30",
-  "10:00",
-  "10:30",
-  "11:00",
-  "11:30",
-  "14:00",
-  "14:30",
-  "15:00",
-  "15:30",
-  "16:00",
-  "16:30",
-  "17:00",
-  "17:30",
-];
-
-// Chuyển mảng schedule từ API về object availability theo dateKey
-// Hàm thuần (không phụ thuộc context/state) nên có thể để ngoài component
 const buildAvailabilityFromSchedules = (schedules) => {
   const result = {};
-
   schedules.forEach((item) => {
     const d = new Date(item.workDate);
     const key = `${d.getFullYear()}_${d.getMonth() + 1}_${d.getDate()}`;
-
     if (!result[key]) {
       result[key] = { available: false, slots: {} };
     }
-
     if (item.available) {
       result[key].available = true;
       result[key].slots[item.timeSlot] = true;
     }
   });
-
   return result;
 };
 
@@ -72,8 +44,6 @@ const DoctorAvailability = () => {
     return d;
   }, []);
 
-  // Thời điểm hiện tại (có giờ/phút), dùng để so sánh với từng slot của HÔM NAY.
-  // Cập nhật mỗi phút để các slot tự động mờ đi khi thời gian trôi qua mà không cần reload trang.
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60 * 1000);
@@ -82,14 +52,11 @@ const DoctorAvailability = () => {
 
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
-
-  // availability[dateKey] = { available: boolean, slots: { [time]: boolean } }
   const [availability, setAvailability] = useState({});
 
   const dateKey = (d) =>
     `${d.getFullYear()}_${d.getMonth() + 1}_${d.getDate()}`;
 
-  // Gọi API lấy lịch làm việc của bác sĩ trong tháng đang xem
   const fetchAvailability = async (forDate) => {
     try {
       const year = forDate.getFullYear();
@@ -100,7 +67,7 @@ const DoctorAvailability = () => {
       const { data } = await axios.get(
         `${backendUrl}/api/doctor/get-availability`,
         {
-          headers: { dToken },
+          headers: { dtoken: dToken }, // Nhớ dùng dtoken chữ thường cho chuẩn
           params: {
             fromDate: fromDate.toISOString(),
             toDate: toDate.toISOString(),
@@ -110,7 +77,6 @@ const DoctorAvailability = () => {
 
       if (data.success) {
         const mapped = buildAvailabilityFromSchedules(data.schedules || []);
-        // Merge thay vì ghi đè toàn bộ, để không mất dữ liệu tháng khác đã load trước đó
         setAvailability((prev) => ({ ...prev, ...mapped }));
       } else {
         toast.error(data.message || "Không tải được lịch làm việc");
@@ -131,18 +97,16 @@ const DoctorAvailability = () => {
   }, [dToken, viewDate]);
 
   const changeMonth = (offset) => {
-    setViewDate((prev) => {
-      const next = new Date(prev.getFullYear(), prev.getMonth() + offset, 1);
-      return next;
-    });
+    setViewDate(
+      (prev) => new Date(prev.getFullYear(), prev.getMonth() + offset, 1),
+    );
     setSelectedDate(null);
   };
 
   const changeYear = (offset) => {
-    setViewDate((prev) => {
-      const next = new Date(prev.getFullYear() + offset, prev.getMonth(), 1);
-      return next;
-    });
+    setViewDate(
+      (prev) => new Date(prev.getFullYear() + offset, prev.getMonth(), 1),
+    );
     setSelectedDate(null);
   };
 
@@ -151,58 +115,40 @@ const DoctorAvailability = () => {
     setSelectedDate(null);
   };
 
-  // Sinh danh sách ô ngày để hiển thị full lưới 7 cột (bao gồm ngày tháng trước/sau để lấp đầy tuần)
   const calendarCells = useMemo(() => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
-
     const firstDayOfMonth = new Date(year, month, 1);
     const lastDayOfMonth = new Date(year, month + 1, 0);
-
-    // Thứ trong JS: 0 = CN ... 6 = T7. Chuyển sang hệ T2 đầu tuần.
     const firstWeekday = (firstDayOfMonth.getDay() + 6) % 7;
-
     const cells = [];
 
-    // Ngày cuối tháng trước để lấp đầy đầu lưới
     for (let i = firstWeekday - 1; i >= 0; i--) {
-      const d = new Date(year, month, -i);
-      cells.push({ date: d, inCurrentMonth: false });
+      cells.push({ date: new Date(year, month, -i), inCurrentMonth: false });
     }
-
-    // Ngày trong tháng hiện tại
     for (let d = 1; d <= lastDayOfMonth.getDate(); d++) {
       cells.push({ date: new Date(year, month, d), inCurrentMonth: true });
     }
-
-    // Ngày đầu tháng sau để lấp đầy cuối lưới (đủ bội số của 7)
     while (cells.length % 7 !== 0) {
       const last = cells[cells.length - 1].date;
       const d = new Date(last);
       d.setDate(d.getDate() + 1);
       cells.push({ date: d, inCurrentMonth: false });
     }
-
     return cells;
   }, [viewDate]);
 
   const isPast = (d) => d < today;
   const isToday = (d) => d.getTime() === today.getTime();
-  const isWeekend = (d) => {
-    const day = d.getDay();
-    return day === 0 || day === 6;
-  };
+  const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
 
   const isDayAvailable = (d) => {
     const key = dateKey(d);
     return availability[key]?.available ?? false;
   };
 
-  // Kiểm tra 1 khung giờ cụ thể của ngày d đã qua hay chưa.
-  // Chỉ có ý nghĩa khi d là hôm nay; các ngày tương lai luôn trả về false.
   const isSlotPast = (d, time) => {
     if (!isToday(d)) return false;
-
     const [hour, minute] = time.split(":").map(Number);
     const slotDateTime = new Date(
       d.getFullYear(),
@@ -213,7 +159,6 @@ const DoctorAvailability = () => {
       0,
       0,
     );
-
     return slotDateTime <= now;
   };
 
@@ -230,9 +175,7 @@ const DoctorAvailability = () => {
   };
 
   const toggleSlot = (d, time) => {
-    if (isPast(d)) return;
-    if (isSlotPast(d, time)) return;
-
+    if (isPast(d) || isSlotPast(d, time)) return;
     const key = dateKey(d);
     setAvailability((prev) => {
       const current = prev[key] || { available: true, slots: {} };
@@ -247,6 +190,29 @@ const DoctorAvailability = () => {
     });
   };
 
+  // --- TÍNH NĂNG MỚI: Chọn tất cả / Xóa tất cả slot ---
+  const handleSelectAllSlots = (d) => {
+    if (isPast(d)) return;
+    const key = dateKey(d);
+    setAvailability((prev) => {
+      const allSlots = {};
+      defaultTimeSlots.forEach((time) => {
+        if (!isSlotPast(d, time)) allSlots[time] = true;
+      });
+      return { ...prev, [key]: { available: true, slots: allSlots } };
+    });
+  };
+
+  const handleClearAllSlots = (d) => {
+    if (isPast(d)) return;
+    const key = dateKey(d);
+    setAvailability((prev) => ({
+      ...prev,
+      [key]: { available: true, slots: {} },
+    }));
+  };
+  // --------------------------------------------------
+
   const handleSelectDay = (d, inCurrentMonth) => {
     if (isPast(d)) return;
     if (!inCurrentMonth) {
@@ -257,55 +223,38 @@ const DoctorAvailability = () => {
 
   const saveAvailability = async () => {
     if (!selectedDate) return;
-
     try {
       const key = dateKey(selectedDate);
       const dayData = availability[key] || { available: false, slots: {} };
       const dayAvailable = dayData.available;
       const daySlots = dayData.slots || {};
 
-      // B1: Chuẩn bị dữ liệu để gửi lên backend
-      // Gửi đủ tất cả slot mặc định, kèm trạng thái available của từng slot.
-      // Nếu cả ngày không làm việc -> toàn bộ slot available = false.
-      // Nếu là hôm nay và slot đã qua giờ -> luôn gửi false, tránh lưu nhầm slot quá khứ.
-      const slotsPayload = defaultTimeSlots.map((time) => {
-        const pastSlot = isSlotPast(selectedDate, time);
-        return {
-          timeSlot: time,
-          available: dayAvailable && !pastSlot ? !!daySlots[time] : false,
-        };
-      });
+      const slotsPayload = defaultTimeSlots.map((time) => ({
+        timeSlot: time,
+        available:
+          dayAvailable && !isSlotPast(selectedDate, time)
+            ? !!daySlots[time]
+            : false,
+      }));
 
-      const payload = {
-        workDate: selectedDate, // Date object, backend sẽ new Date(workDate)
-        slots: slotsPayload,
-      };
-
-      // B2: Gọi API để lưu dữ liệu
       const { data } = await axios.post(
         `${backendUrl}/api/doctor/update-availability`,
-        payload,
-        { headers: { dToken } },
+        { workDate: selectedDate, slots: slotsPayload },
+        { headers: { dtoken: dToken } },
       );
 
-      // B3: Xử lý kết quả trả về (thành công hay thất bại)
       if (data.success) {
-        // B4: Cập nhật lại state availability nếu cần (giữ nguyên vì đã đúng)
         setAvailability((prev) => ({
           ...prev,
           [key]: { available: dayAvailable, slots: daySlots },
         }));
-
-        // B5: Thông báo cho người dùng
         toast.success(data.message || "Lưu lịch làm việc thành công");
       } else {
         toast.error(data.message || "Lưu lịch làm việc thất bại");
       }
     } catch (error) {
       console.error(error);
-      toast.error(
-        error?.response?.data?.message || error.message || "Đã có lỗi xảy ra",
-      );
+      toast.error(error?.response?.data?.message || "Đã có lỗi xảy ra");
     }
   };
 
@@ -318,25 +267,26 @@ const DoctorAvailability = () => {
     : false;
 
   return (
-    <div className="w-full max-w-6xl m-5">
-      <p className="mb-3 text-lg font-medium">Lịch làm việc</p>
+    <div className="w-full min-h-screen p-5 md:p-8 bg-[#F8F9FD]">
+      <p className="mb-6 text-2xl font-bold text-gray-800">
+        Cài đặt lịch làm việc
+      </p>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* ---------- Lịch tháng ---------- */}
-        <div className="flex-1 bg-white border rounded-xl shadow-sm p-6">
-          {/* Thanh điều hướng */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-1">
+      <div className="flex flex-col xl:flex-row gap-8">
+        {/* ---------- Lịch tháng (Trái) ---------- */}
+        <div className="flex-1 bg-white border border-gray-100 rounded-2xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] p-6 md:p-8 h-fit">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => changeYear(-1)}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-primary transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-gray-500 bg-gray-50 hover:bg-primary hover:text-white transition-all"
                 title="Năm trước"
               >
                 «
               </button>
               <button
                 onClick={() => changeMonth(-1)}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-primary transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-gray-500 bg-gray-50 hover:bg-primary hover:text-white transition-all"
                 title="Tháng trước"
               >
                 ‹
@@ -344,28 +294,28 @@ const DoctorAvailability = () => {
             </div>
 
             <div className="text-center">
-              <p className="text-xl font-semibold text-gray-700">
+              <p className="text-xl font-bold text-gray-800 capitalize">
                 {monthNamesVi[viewDate.getMonth()]}, {viewDate.getFullYear()}
               </p>
               <button
                 onClick={goToToday}
-                className="text-xs text-primary hover:underline mt-1"
+                className="text-sm font-medium text-primary hover:text-blue-700 hover:underline mt-1 transition-colors"
               >
-                Hôm nay
+                Trở về Hôm nay
               </button>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => changeMonth(1)}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-primary transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-gray-500 bg-gray-50 hover:bg-primary hover:text-white transition-all"
                 title="Tháng sau"
               >
                 ›
               </button>
               <button
                 onClick={() => changeYear(1)}
-                className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-primary transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full text-gray-500 bg-gray-50 hover:bg-primary hover:text-white transition-all"
                 title="Năm sau"
               >
                 »
@@ -373,22 +323,18 @@ const DoctorAvailability = () => {
             </div>
           </div>
 
-          {/* Hàng tên thứ */}
-          <div className="grid grid-cols-7 mb-2">
+          <div className="grid grid-cols-7 mb-4">
             {weekDaysVi.map((wd, i) => (
               <p
                 key={wd}
-                className={`text-center text-xs font-semibold ${
-                  i >= 5 ? "text-red-400" : "text-gray-500"
-                }`}
+                className={`text-center text-sm font-bold pb-2 border-b ${i >= 5 ? "text-red-400 border-red-100" : "text-gray-400 border-gray-100"}`}
               >
                 {wd}
               </p>
             ))}
           </div>
 
-          {/* Lưới ngày */}
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-7 gap-2 md:gap-3">
             {calendarCells.map(({ date, inCurrentMonth }, idx) => {
               const past = isPast(date);
               const today_ = isToday(date);
@@ -402,75 +348,106 @@ const DoctorAvailability = () => {
                   key={idx}
                   onClick={() => handleSelectDay(date, inCurrentMonth)}
                   className={[
-                    "relative aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all duration-200 select-none",
-                    !inCurrentMonth ? "text-gray-300" : "text-gray-700",
+                    "relative aspect-square flex flex-col items-center justify-center rounded-xl text-base transition-all duration-200 select-none border-2",
+                    !inCurrentMonth
+                      ? "text-gray-300 border-transparent"
+                      : "text-gray-700",
                     past
-                      ? "opacity-40 cursor-default"
-                      : "cursor-pointer hover:bg-primary/10 hover:scale-[1.03]",
-                    weekend && inCurrentMonth && !past ? "bg-gray-50" : "",
-                    today_
-                      ? "border-2 border-primary font-semibold"
-                      : "border border-transparent",
-                    selected ? "!bg-primary !text-white" : "",
+                      ? "opacity-40 cursor-not-allowed border-transparent"
+                      : "cursor-pointer hover:border-primary/30 hover:shadow-sm",
+                    weekend && inCurrentMonth && !past ? "bg-red-50/30" : "",
+                    today_ && !selected
+                      ? "border-primary/50 text-primary font-bold bg-blue-50/30"
+                      : "border-transparent",
+                    selected
+                      ? "!bg-primary !border-primary !text-white shadow-md shadow-primary/30 scale-105 z-10"
+                      : "bg-white",
                   ].join(" ")}
                 >
-                  <span>{date.getDate()}</span>
-                  {inCurrentMonth && !past && available && !selected && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary mt-0.5"></span>
+                  <span className="font-semibold">{date.getDate()}</span>
+                  {inCurrentMonth && !past && available && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full mt-1 ${selected ? "bg-white" : "bg-primary"}`}
+                    ></span>
                   )}
                 </div>
               );
             })}
           </div>
 
-          {/* Chú thích */}
-          <div className="flex flex-wrap gap-4 mt-6 text-xs text-gray-500">
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded border-2 border-primary inline-block"></span>
+          <div className="flex flex-wrap gap-5 mt-8 px-4 py-3 bg-gray-50 rounded-xl text-sm font-medium text-gray-600">
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded-md border-2 border-primary/50 bg-blue-50/30 inline-block"></span>{" "}
               Hôm nay
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>
-              Có lịch làm việc
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary inline-block"></span>{" "}
+              Có lịch làm
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-gray-200 inline-block opacity-60"></span>
-              Ngày đã qua
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded-md bg-gray-100 inline-block opacity-60"></span>{" "}
+              Đã qua
             </div>
           </div>
         </div>
 
-        {/* ---------- Chi tiết ngày được chọn ---------- */}
-        <div className="w-full lg:w-80 bg-white border rounded-xl shadow-sm p-6">
+        {/* ---------- Chi tiết ngày (Phải) ---------- */}
+        <div className="w-full xl:w-[400px] bg-white border border-gray-100 rounded-2xl shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] p-6 md:p-8 h-fit">
           {selectedDate ? (
-            <>
-              <p className="text-base font-semibold text-gray-700 mb-1">
-                {weekDaysVi[(selectedDate.getDay() + 6) % 7]}, ngày{" "}
-                {selectedDate.getDate()}/{selectedDate.getMonth() + 1}/
-                {selectedDate.getFullYear()}
-              </p>
+            <div className="animate-fade-in">
+              <div className="pb-5 border-b border-gray-100">
+                <p className="text-sm font-bold text-primary uppercase tracking-wider mb-1">
+                  Thiết lập khung giờ
+                </p>
+                <p className="text-xl font-bold text-gray-800">
+                  {weekDaysVi[(selectedDate.getDay() + 6) % 7]}, ngày{" "}
+                  {selectedDate.getDate()}/{selectedDate.getMonth() + 1}/
+                  {selectedDate.getFullYear()}
+                </p>
+              </div>
 
-              <div className="flex items-center gap-2 mt-4 mb-5">
-                <input
-                  type="checkbox"
-                  id="day-available"
-                  checked={selectedDayAvailable}
-                  onChange={() => toggleDayAvailable(selectedDate)}
-                />
+              <div className="flex items-center gap-3 py-6 border-b border-gray-100">
+                <div className="relative flex items-start">
+                  <input
+                    type="checkbox"
+                    id="day-available"
+                    checked={selectedDayAvailable}
+                    onChange={() => toggleDayAvailable(selectedDate)}
+                    className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer mt-0.5"
+                  />
+                </div>
                 <label
                   htmlFor="day-available"
-                  className="text-sm text-gray-600"
+                  className="text-base font-semibold text-gray-700 cursor-pointer select-none"
                 >
-                  Làm việc trong ngày này
+                  Mở lịch nhận bệnh nhân
                 </label>
               </div>
 
               {selectedDayAvailable && (
-                <>
-                  <p className="text-sm font-medium text-gray-600 mb-2">
-                    Chọn khung giờ khả dụng
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                <div className="pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm font-bold text-gray-600">
+                      Chọn giờ khả dụng
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSelectAllSlots(selectedDate)}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        Chọn hết
+                      </button>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        onClick={() => handleClearAllSlots(selectedDate)}
+                        className="text-xs font-semibold text-red-500 hover:underline"
+                      >
+                        Xóa hết
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
                     {defaultTimeSlots.map((time) => {
                       const active = !!selectedSlots[time];
                       const disabled = isSlotPast(selectedDate, time);
@@ -480,12 +457,12 @@ const DoctorAvailability = () => {
                           disabled={disabled}
                           onClick={() => toggleSlot(selectedDate, time)}
                           title={disabled ? "Đã qua giờ này" : undefined}
-                          className={`text-xs py-2 rounded-full border transition-colors duration-150 ${
+                          className={`text-sm font-medium py-2.5 rounded-xl border-2 transition-all duration-200 active:scale-95 ${
                             disabled
-                              ? "opacity-40 cursor-not-allowed text-gray-400 border-gray-200 bg-gray-50"
+                              ? "opacity-40 cursor-not-allowed text-gray-400 border-gray-100 bg-gray-50"
                               : active
-                                ? "bg-primary text-white border-primary"
-                                : "text-gray-500 border-[#B4B4B4] hover:bg-primary/10"
+                                ? "bg-primary/10 text-primary border-primary shadow-sm"
+                                : "text-gray-500 border-gray-200 hover:border-primary/50 hover:bg-gray-50"
                           }`}
                         >
                           {time}
@@ -493,19 +470,25 @@ const DoctorAvailability = () => {
                       );
                     })}
                   </div>
-                </>
+                </div>
               )}
 
               <button
                 onClick={saveAvailability}
-                className="w-full mt-6 bg-primary text-white text-sm py-2.5 rounded-full hover:opacity-90 transition-opacity"
+                className="w-full mt-8 bg-primary text-white text-base font-bold py-3.5 rounded-xl shadow-md shadow-primary/30 hover:bg-blue-600 hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-95"
               >
-                Lưu thay đổi
+                Lưu Thay Đổi
               </button>
-            </>
+            </div>
           ) : (
-            <div className="h-full flex items-center justify-center text-center text-sm text-gray-400 py-10">
-              Chọn một ngày trong lịch <br /> để thiết lập khung giờ làm việc
+            <div className="h-[400px] flex flex-col items-center justify-center text-center opacity-60">
+              <div className="w-20 h-20 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                <span className="text-4xl">📅</span>
+              </div>
+              <p className="text-lg font-bold text-gray-500">Chưa chọn ngày</p>
+              <p className="text-sm text-gray-400 mt-2 max-w-[200px]">
+                Vui lòng chọn một ngày trên lịch để thiết lập ca làm việc.
+              </p>
             </div>
           )}
         </div>

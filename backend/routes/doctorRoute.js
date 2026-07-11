@@ -13,6 +13,7 @@ import {
   updateAvailability,
   getAvailability,
   getDoctorSlots,
+  getDoctorReview,
 } from "../controllers/doctorController.js";
 import {
   getMedicalRecordsByUserId,
@@ -22,10 +23,10 @@ import {
 import { authDoctor } from "../middleware/authDoctor.js";
 const doctorRouter = express.Router();
 
-doctorRouter.get("/slots/:docId", getDoctorSlots);
 doctorRouter.post("/login", loginDoctor);
 doctorRouter.post("/cancel-appointment", authDoctor, appointmentCancel);
 doctorRouter.post("/accept-appointment", authDoctor, appointmentAccept);
+doctorRouter.get("/slots/:docId", getDoctorSlots);
 doctorRouter.get("/appointments", authDoctor, appointmentsDoctor);
 doctorRouter.get(
   "/medical-records/:userId",
@@ -50,5 +51,6 @@ doctorRouter.get("/profile", authDoctor, doctorProfile);
 doctorRouter.post("/update-profile", authDoctor, updateDoctorProfile);
 doctorRouter.post("/update-availability", authDoctor, updateAvailability);
 doctorRouter.get("/get-availability", authDoctor, getAvailability);
+doctorRouter.get("/reviews/:docId", getDoctorReview);
 
 export default doctorRouter;

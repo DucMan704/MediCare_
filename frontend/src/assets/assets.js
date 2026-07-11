@@ -36,11 +36,19 @@ import General_physician from "./General_physician.svg";
 import Gynecologist from "./Gynecologist.svg";
 import Neurologist from "./Neurologist.svg";
 import Pediatricians from "./Pediatricians.svg";
+import diabetes_image from "./diabetes_image.jpg";
+import malaria_image from "./malaria_image.jpg";
+import pneumonia_image from "./pneumonia_image.jpg";
+import stroke_image from "./stroke_image.png";
+import skin_image from "./skin_image.jpg";
+import Aidoctor from "./Aidoctor.jpg";
+import vnpay_logo from "./vnpay_logo.png";
 
 export const assets = {
   appointment_img,
   header_img,
   group_profiles,
+  vnpay_logo,
   logo,
   chats_icon,
   verified_icon,
@@ -55,6 +63,12 @@ export const assets = {
   upload_icon,
   stripe_logo,
   razorpay_logo,
+  diabetes_image,
+  malaria_image,
+  pneumonia_image,
+  stroke_image,
+  skin_image,
+  Aidoctor,
 };
 
 export const specialityData = [
