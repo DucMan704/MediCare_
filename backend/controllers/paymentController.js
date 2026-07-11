@@ -6,7 +6,6 @@ import {
   dateFormat,
   ignoreLogger,
 } from "vnpay";
-import { ignoreLogger } from "vnpay";
 import vnpay from "../config/vnpay.js";
 import "dotenv/config";
 
