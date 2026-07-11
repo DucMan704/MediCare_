@@ -3,7 +3,7 @@ import cors from "cors";
 import "dotenv/config";
 import cookieParser from "cookie-parser"; // Bắt buộc phải có để đọc refreshToken
 
-import {connectDB } from "./config/mongodb.js";
+import connectDB from "./config/mongodb.js";
 import connectCloudinary from "./config/cloudinary.js";
 
 import userRouter from "./routes/userRoute.js";

@@ -22,7 +22,7 @@ import {
   checkPaymentVNPay,
 } from "../controllers/paymentController.js";
 import upload from "../middleware/multer.js";
-import {authUser } from "../middleware/authUser.js";
+import authUser from "../middleware/authUser.js";
 const userRouter = express.Router();
 
 userRouter.post("/register", registerUser);

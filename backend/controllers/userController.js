@@ -924,7 +924,7 @@ export {
   loginUser,
   registerUser,
   logoutUser,
-  refreshToken, 
+  refreshToken,
   getProfile,
   updateProfile,
   bookAppointment,
@@ -940,4 +940,5 @@ export {
   getMedicalRecords,
   reviewDoctor,
   findDoctorFeeByAppointmentId,
+  authMe,
 };
