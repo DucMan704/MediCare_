@@ -190,7 +190,10 @@ const Appointment = () => {
     let month = date.getMonth() + 1;
     let year = date.getFullYear();
 
-    const slotDate = day + "_" + month + "_" + year;
+    const formattedDay = String(day).padStart(2, "0");
+    const formattedMonth = String(month).padStart(2, "0"); // month = getMonth() + 1
+
+    const slotDate = `${formattedDay}_${formattedMonth}_${year}`;
 
     try {
       const { data } = await axios.post(
