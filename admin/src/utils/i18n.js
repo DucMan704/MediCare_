@@ -24,6 +24,42 @@ export const monthsVi = [
   "Th12",
 ];
 
+export const monthNamesVi = [
+  "Tháng 1",
+  "Tháng 2",
+  "Tháng 3",
+  "Tháng 4",
+  "Tháng 5",
+  "Tháng 6",
+  "Tháng 7",
+  "Tháng 8",
+  "Tháng 9",
+  "Tháng 10",
+  "Tháng 11",
+  "Tháng 12",
+];
+
+export const weekDaysVi = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+
+export const defaultTimeSlots = [
+  "08:00",
+  "08:30",
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "11:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
+  "17:00",
+  "17:30",
+];
+
 export const formatSlotDate = (slotDate) => {
   const dateArray = slotDate.split("_");
   return `${dateArray[0]} ${monthsVi[Number(dateArray[1]) - 1]} ${dateArray[2]}`;

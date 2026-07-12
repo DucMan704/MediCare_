@@ -10,6 +10,7 @@ import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
 import MedicalRecord from "../models/medicalRecordModel.js";
 import userMedicalRecordModel from "../models/userMedicalRecordModel.js";
+import reviewModel from "../models/reviewModel.js";
 import { v2 as cloudinary } from "cloudinary";
 import stripe from "stripe";
 import razorpay from "razorpay";
@@ -195,7 +196,7 @@ const logoutUser = async (req, res) => {
   }
 };
 
-export const authMe = async (req, res) => {
+const authMe = async (req, res) => {
   return res.status(200).json({
     success: true,
     user: req.user,
@@ -203,9 +204,8 @@ export const authMe = async (req, res) => {
   });
 };
 
-
 //refresh token
-  const refreshToken = async (req, res) => {
+const refreshToken = async (req, res) => {
   try {
     // lấy refresh token từ cookie
     const token = req.cookies?.refreshToken;
@@ -248,7 +248,10 @@ export const authMe = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = req.user._id;
-    const userData = await userModel.findById(userId).select("-password").lean();
+    const userData = await userModel
+      .findById(userId)
+      .select("-password")
+      .lean();
 
     res.status(200).json({ success: true, userData });
   } catch (error) {
@@ -293,7 +296,36 @@ const updateProfile = async (req, res) => {
   }
 };
 
-// API to book appointment
+const findDoctorFeeByAppointmentId = async (appointmentId) => {
+  try {
+    // B1 & B2: Tìm cuộc hẹn và chỉ lấy trường docId
+    const appointment = await appointmentModel
+      .findById(appointmentId)
+      .select("docId")
+      .lean();
+
+    if (!appointment) {
+      throw new Error("Appointment not found");
+    }
+
+    // B3 & B4: Tìm bác sĩ và chỉ lấy trường fees
+    const doctor = await doctorModel
+      .findById(appointment.docId)
+      .select("fees")
+      .lean();
+
+    if (!doctor) {
+      throw new Error("Doctor not found");
+    }
+
+    return doctor.fees;
+  } catch (error) {
+    console.error("Error in findDoctorFeeByAppointmentId:", error.message);
+    throw error; // Throw ra ngoài để Controller cấp cao hơn bọc và res.json() lỗi
+  }
+};
+
+// API to book appointment (Cho phép đặt trùng khung giờ tự do)
 const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -302,40 +334,67 @@ const bookAppointment = async (req, res) => {
     const userId = req.user._id;
     const { docId, slotDate, slotTime } = req.body;
 
-    // khóa atomic cái slot lại 
-    //  Bác sĩ phải có và đang available, và slotTime chưa nằm trong mảng của slotDate
-    const updatedDoctor = await doctorModel.findOneAndUpdate(
-      { 
-        _id: docId, 
-        available: true,
-        [`slots_booked.${slotDate}`]: { $ne: slotTime } 
-      },
-      { 
-        $push: { [`slots_booked.${slotDate}`]: slotTime } 
-      },
-      { new: true, select: "-password", session }
-    ).lean();
+    // 1. Kiểm tra đầu vào cơ bản
+    if (!docId || !slotDate || !slotTime) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing required fields" });
+    }
 
+    // 2. Cập nhật lịch bác sĩ (Bỏ chặn trùng giờ, cho phép đặt tự do)
+    const updatedDoctor = await doctorModel
+      .findOneAndUpdate(
+        {
+          _id: docId,
+          available: true, // Bác sĩ bắt buộc phải đang mở chế độ nhận lịch
+        },
+        {
+          // Dùng $addToSet thay vì $push để mảng lưu duy nhất chuỗi giờ đó,
+          // tránh việc mảng bị trùng lắp ["10:30 AM", "10:30 AM", "10:30 AM"] làm phình DB
+          $addToSet: { [`slots_booked.${slotDate}`]: slotTime },
+        },
+        { new: true, select: "-password", session },
+      )
+      .lean();
+
+    // Nếu không cập nhật thành công (Bác sĩ không tồn tại hoặc bận)
     if (!updatedDoctor) {
-      // if update thất bại thif kiểm tra nguyên nhân để trả về lỗi 
       const docCheck = await doctorModel.findById(docId).session(session);
       await session.abortTransaction();
       session.endSession();
 
-      if (!docCheck) return res.status(404).json({ success: false, message: "Doctor not found" });
-      if (!docCheck.available) return res.status(400).json({ success: false, message: "Doctor Not Available" });
-      return res.status(400).json({ success: false, message: "Slot Not Available (Double Booking Prevented)" });
+      if (!docCheck) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Doctor not found" });
+      }
+      if (!docCheck.available) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Doctor Not Available" });
+      }
     }
 
-    const userData = await userModel.findById(userId).select("-password").session(session).lean();
+    // 3. Lấy thông tin người dùng đặt lịch
+    const userData = await userModel
+      .findById(userId)
+      .select("-password")
+      .session(session)
+      .lean();
 
     if (!userData) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ success: false, message: "User not found" });
+      // Đã sửa: Thêm return ở đây để tránh treo API
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
-    delete updatedDoctor.slots_booked;
+    // 4. Chuẩn bị dữ liệu lịch hẹn
+    delete updatedDoctor.slots_booked; // Xóa bớt data mảng cồng kềnh trước khi lưu vào hóa đơn lịch hẹn
 
     const appointmentData = {
       userId,
@@ -348,22 +407,26 @@ const bookAppointment = async (req, res) => {
       date: Date.now(),
     };
 
+    // 5. Tạo và lưu lịch hẹn mới vào database
     const newAppointment = new appointmentModel(appointmentData);
     await newAppointment.save({ session });
 
+    // 6. Hoàn tất giao dịch (Commit Transaction)
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ success: true, message: "Appointment Booked" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Appointment Booked Successfully" });
   } catch (error) {
+    // Nếu có bất kỳ lỗi hệ thống nào xảy ra, rollback lại toàn bộ dữ liệu sạch sẽ
     await session.abortTransaction();
     session.endSession();
-    
-    console.log(error);
-    res.status(500).json({ success: false, message: error.message });
+
+    console.error("Book Appointment Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // API to get user appointments for frontend my-appointments page
 const listAppointment = async (req, res) => {
@@ -374,7 +437,7 @@ const listAppointment = async (req, res) => {
     res.json({ success: true, appointments });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -385,36 +448,47 @@ const cancelAppointment = async (req, res) => {
   try {
     const userId = req.user._id;
     const { appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId).session(session)
+    const appointmentData = await appointmentModel
+      .findById(appointmentId)
+      .session(session);
 
-    // ktra appointment user 
+    // ktra appointment user
     if (appointmentData.userId.toString() !== userId.toString()) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ success: false, message: 'Unauthorized action' })
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized action" });
     }
 
-    await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true }, { session })
+    await appointmentModel.findByIdAndUpdate(
+      appointmentId,
+      { cancelled: true },
+      { session },
+    );
 
     // releasing doctor slot using atomic $pull operator
-    const { docId, slotDate, slotTime } = appointmentData
+    const { docId, slotDate, slotTime } = appointmentData;
 
-    await doctorModel.findByIdAndUpdate(docId, { 
-      $pull: { [`slots_booked.${slotDate}`]: slotTime } 
-    }, { session })
+    await doctorModel.findByIdAndUpdate(
+      docId,
+      {
+        $pull: { [`slots_booked.${slotDate}`]: slotTime },
+      },
+      { session },
+    );
 
     await session.commitTransaction();
     session.endSession();
 
-    res.json({ success: true, message: 'Appointment Cancelled' })
-
+    return res.json({ success: true, message: "Appointment Cancelled" });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.log(error)
-    res.json({ success: false, message: error.message })
+    console.log(error);
+    return res.json({ success: false, message: error.message });
   }
-}
+};
 
 // API to make payment of appointment using razorpay
 const paymentRazorpay = async (req, res) => {
@@ -457,10 +531,10 @@ const paymentRazorpay = async (req, res) => {
     // creation of an order
     const order = await razorpayInstance.orders.create(options);
 
-    res.json({ success: true, order });
+    return res.json({ success: true, order });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -491,13 +565,13 @@ const verifyRazorpay = async (req, res) => {
       await appointmentModel.findByIdAndUpdate(orderInfo.receipt, {
         payment: true,
       });
-      res.json({ success: true, message: "Payment Successful" });
+      return res.json({ success: true, message: "Payment Successful" });
     } else {
-      res.json({ success: false, message: "Payment Failed" });
+      return res.json({ success: false, message: "Payment Failed" });
     }
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -553,10 +627,10 @@ const paymentStripe = async (req, res) => {
       mode: "payment",
     });
 
-    res.json({ success: true, session_url: session.url });
+    return res.json({ success: true, session_url: session.url });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -580,10 +654,10 @@ const verifyStripe = async (req, res) => {
       return res.json({ success: true, message: "Payment Successful" });
     }
 
-    res.json({ success: false, message: "Payment Failed" });
+    return res.json({ success: false, message: "Payment Failed" });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -606,7 +680,7 @@ const getMedicalRecordsByUserId = async (req, res) => {
       },
     });
 
-  res.json({ success: true, medicalRecords });
+  return res.json({ success: true, medicalRecords });
 };
 
 const createMedicalRecordForUser = async (req, res) => {
@@ -690,7 +764,7 @@ const createMedicalRecordForUser = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -772,7 +846,92 @@ const updateMedicalRecordForUser = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message });
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+const getMedicalRecords = async (req, res) => {
+  try {
+    // B1: Lấy userId từ params
+    const { userId } = req.params;
+
+    // B2: Kiểm tra userId có tồn tại trong cơ sở dữ liệu không
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    // B3: Lấy danh sách hồ sơ y tế của người dùng từ bảng userMedicalRecordModel
+    const medicalRecords = await userMedicalRecordModel
+      .find({ userId })
+      .populate({
+        path: "medicalRecordId",
+        populate: {
+          path: "doctorId",
+          select: "name speciality image",
+        },
+      });
+
+    // B4: Trả về danh sách hồ sơ y tế cho người dùng
+    return res.json({
+      success: true,
+      message: "Lấy danh sách hồ sơ y tế thành công",
+      medicalRecords,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+const reviewDoctor = async (req, res) => {
+  try {
+    // B1: Lấy thông tin từ body và người dùng đã xác thực
+    const { docId, rating, comment } = req.body;
+    const userId = req.body.userId;
+
+    // B2: Kiểm tra thông tin bắt buộc — comment là tùy chọn theo schema (default: "")
+    if (!docId || !rating) {
+      return res.json({
+        success: false,
+        message: "Vui lòng chọn bác sĩ và số sao đánh giá",
+      });
+    }
+
+    const numericRating = Number(rating);
+    if (
+      !Number.isInteger(numericRating) ||
+      numericRating < 1 ||
+      numericRating > 5
+    ) {
+      return res.json({
+        success: false,
+        message: "Đánh giá phải là số nguyên từ 1 đến 5 sao",
+      });
+    }
+
+    // B3: Kiểm tra doctorId có tồn tại trong cơ sở dữ liệu không
+    const doctor = await doctorModel.findById(docId);
+    if (!doctor) {
+      return res.json({ success: false, message: "Bác sĩ không tồn tại" });
+    }
+
+    // B4: Tạo review mới, hoặc cập nhật nếu bệnh nhân đã đánh giá bác sĩ này trước đó
+    const review = await reviewModel.findOneAndUpdate(
+      { userId: userId, doctorId: docId },
+      { rating: numericRating, comment: comment?.trim() || "" },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+
+    // B5: Trả về thông báo thành công
+    return res.json({
+      success: true,
+      message: "Đánh giá bác sĩ thành công",
+      review,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.json({ success: false, message: error.message });
   }
 };
 
@@ -780,7 +939,7 @@ export {
   loginUser,
   registerUser,
   logoutUser,
-  refreshToken, 
+  refreshToken,
   getProfile,
   updateProfile,
   bookAppointment,
@@ -793,4 +952,8 @@ export {
   getMedicalRecordsByUserId,
   createMedicalRecordForUser,
   updateMedicalRecordForUser,
+  getMedicalRecords,
+  reviewDoctor,
+  findDoctorFeeByAppointmentId,
+  authMe,
 };

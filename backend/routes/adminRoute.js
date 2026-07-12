@@ -9,6 +9,11 @@ import {
   deleteDoctor,
   editDoctor,
   getDoctorById,
+  getPatientAppointments,
+  getAllPatients,
+  getMedicalRecords,
+  updatePatientProfileByAdmin,
+  patientDelete,
 } from "../controllers/adminController.js";
 import { changeAvailablity } from "../controllers/doctorController.js";
 import authAdmin from "../middleware/authAdmin.js";
@@ -30,5 +35,20 @@ adminRouter.post(
   upload.single("image"),
   editDoctor,
 );
+adminRouter.get(
+  "/patient-appointments/:userId",
+  authAdmin,
+  getPatientAppointments,
+);
+adminRouter.get("/patients", authAdmin, getAllPatients);
+adminRouter.get("/medical-records/:userId", authAdmin, getMedicalRecords);
+
+adminRouter.post(
+  "/update-patient-profile",
+  authAdmin,
+  upload.single("image"),
+  updatePatientProfileByAdmin,
+);
+adminRouter.post("/delete-patient", authAdmin, patientDelete);
 
 export default adminRouter;
