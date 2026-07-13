@@ -360,15 +360,16 @@ const doctorDashboard = async (req, res) => {
 const updateAvailability = async (req, res) => {
   try {
     const docId = req.doctor._id;
-    const { workDate, slots } = req.body;
+    const { workDate, slots } = req.body; // workDate lúc này là chuỗi dạng "YYYY-MM-DD"
 
     if (!workDate || !Array.isArray(slots) || slots.length === 0) {
       return res.json({ success: false, message: "Dữ liệu không hợp lệ" });
     }
 
-    // Chuẩn hóa ngày về 00:00:00 để tránh lệch giờ khi so sánh/lưu
-    const normalizedDate = new Date(workDate);
-    normalizedDate.setHours(0, 0, 0, 0);
+    // 🌟 CHỈNH SỬA TẠI ĐÂY: Bóc tách chuỗi YYYY-MM-DD và chuẩn hóa về 00:00:00 UTC
+    // Điều này giúp tránh việc Node.js tự áp múi giờ local gây lệch ngày thành ngày hôm trước/sau
+    const [year, month, day] = workDate.split("-").map(Number);
+    const normalizedDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
 
     // Không cho phép sửa các slot đã có bệnh nhân đặt (isBooked = true)
     const bookedSlots = await scheduleModel
@@ -454,17 +455,24 @@ const getDoctorSlots = async (req, res) => {
     const { docId } = req.params;
     const days = parseInt(req.query.days) || 7;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 🌟 CHỈNH SỬA 1: Tạo ngày hôm nay theo chuẩn UTC để đồng bộ với Database
+    const now = new Date();
+    const today = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0),
+    );
 
+    // Tính toán ngày kết thúc theo chuẩn UTC
     const endDate = new Date(today);
-    endDate.setDate(endDate.getDate() + days - 1);
-    endDate.setHours(23, 59, 59, 999);
+    endDate.setUTCDate(endDate.getUTCDate() + days - 1);
+    endDate.setUTCHours(23, 59, 59, 999);
 
+    // 🌟 CHỈNH SỬA 2: Lọc dữ liệu chuẩn xác
     const schedules = await scheduleModel
       .find({
         doctorId: docId,
         workDate: { $gte: today, $lte: endDate },
+        available: true, // CHỐNG LỖI XÓA LỊCH: Chỉ lấy những khung giờ bác sĩ đang "Mở"
+        isBooked: false, // TỐI ƯU THÊM: Chỉ lấy những ca chưa có bệnh nhân nào đặt trước
       })
       .select("workDate timeSlot available isBooked")
       .sort({ workDate: 1, timeSlot: 1 });
