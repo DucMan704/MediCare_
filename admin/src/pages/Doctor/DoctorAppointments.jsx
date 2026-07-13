@@ -1144,7 +1144,7 @@ const DoctorAppointments = () => {
                   const status = getStatus(item);
                   return (
                     <div
-                      className="grid grid-cols-[0.6fr_2.2fr_1.2fr_1fr_3.2fr_1.2fr_1.6fr] gap-4 items-center text-gray-500 py-3.5 px-6 hover:bg-gray-50/80 cursor-pointer transition-colors"
+                      className="relative group grid grid-cols-[0.6fr_2.2fr_1.2fr_1fr_3.2fr_1.2fr_1.6fr] gap-4 items-center text-gray-500 py-3.5 px-6 hover:bg-gray-50/80 cursor-pointer transition-colors"
                       key={item._id || index}
                       onClick={() => openMedicalRecordPopup(item)}
                       role="button"
@@ -1216,6 +1216,60 @@ const DoctorAppointments = () => {
                           </span>
                         )}
                       </div>
+
+                      {/* ==================== BOX HÓA ĐƠN MINI KHI HOVER ==================== */}
+                      {item.payment && (
+                        <div className="absolute right-6 top-[85%] z-30 hidden group-hover:block w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 animate-fadeIn pointer-events-none text-left">
+                          {/* Khía răng cưa trang trí phía trên hóa đơn */}
+                          <div className="absolute -top-1.5 right-6 w-3 h-3 bg-white border-t border-l border-gray-100 rotate-45"></div>
+
+                          <div className="border-b border-dashed border-gray-200 pb-2 mb-2">
+                            <p className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">
+                              Mã cuộc hẹn
+                            </p>
+                            <p className="text-xs font-mono font-bold text-gray-700 truncate">
+                              {item._id}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1.5 text-xs text-gray-500">
+                            <div className="flex justify-between">
+                              <span>Khách hàng:</span>
+                              <span className="font-medium text-gray-800">
+                                {item.userData.name}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Thời gian:</span>
+                              <span className="text-gray-700">
+                                {item.slotTime} -{" "}
+                                {slotDateFormat(item.slotDate)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Cổng thanh toán:</span>
+                              <span className="text-indigo-600 font-medium">
+                                VNPay / Stripe
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Trạng thái phiếu:</span>
+                              <span className="text-emerald-600 font-medium">
+                                ● Đã quyết toán
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center">
+                            <span className="text-xs font-semibold text-gray-700">
+                              Tổng cộng:
+                            </span>
+                            <span className="text-sm font-bold text-indigo-600">
+                              {Number(item.amount).toLocaleString()} {currency}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })

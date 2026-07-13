@@ -16,6 +16,13 @@ const Sidebar = () => {
         : "text-[#515151] hover:bg-gray-50 hover:text-gray-700"
     }`;
 
+  // Icon dùng filter để đổi màu khi active (vì <img> không nhận text-color)
+  const iconStyle = (isActive) => ({
+    filter: isActive
+      ? "invert(35%) sepia(90%) saturate(1500%) hue-rotate(200deg) brightness(95%)"
+      : "none",
+  });
+
   return (
     <div className="h-screen sticky top-0 bg-white border-r flex flex-col justify-between overflow-y-auto">
       {/* KHỐI TRÊN: Chứa các Menu Điều Hướng */}
@@ -23,40 +30,74 @@ const Sidebar = () => {
         {/* ---------- CÁC TUYẾN ĐƯỜNG DÀNH CHO ADMIN ---------- */}
         {aToken && (
           <ul className="mt-5">
-            <NavLink to={"/admin-dashboard"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.home_icon} alt="" />
-              <p className="hidden md:block">Bảng điều khiển</p>
+            <NavLink to={"/admin-dashboard"} end className={navLinkStyles}>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.home_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Bảng điều khiển</p>
+                </>
+              )}
             </NavLink>
 
             <NavLink to={"/all-appointments"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.appointment_icon} alt="" />
-              <p className="hidden md:block">Lịch hẹn</p>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.appointment_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Lịch hẹn</p>
+                </>
+              )}
             </NavLink>
 
             <NavLink to={"/add-doctor"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.add_icon} alt="" />
-              <p className="hidden md:block">Thêm bác sĩ</p>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.add_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Thêm bác sĩ</p>
+                </>
+              )}
             </NavLink>
 
-            <NavLink to={"/doctor-list"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.people_icon} alt="" />
-              <p className="hidden md:block">Danh sách bác sĩ</p>
+            <NavLink to={"/doctor-list"} end className={navLinkStyles}>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.people_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Danh sách bác sĩ</p>
+                </>
+              )}
             </NavLink>
 
-            <NavLink to={"/patients-list"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.people_icon} alt="" />
-              <p className="hidden md:block">Danh sách bệnh nhân</p>
-            </NavLink>
-
-            {/* 🛡️ TAB MỚI: Bảo mật dành cho Admin */}
-            <NavLink to={"/admin/security"} className={navLinkStyles}>
-              <img
-                className="min-w-5 opacity-70"
-                src={assets.info_icon}
-                alt=""
-              />{" "}
-              {/* Bạn có thể đổi ảnh icon bảo mật phù hợp */}
-              <p className="hidden md:block">Cài đặt bảo mật</p>
+            <NavLink to={"/patients-list"} end className={navLinkStyles}>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.people_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Danh sách bệnh nhân</p>
+                </>
+              )}
             </NavLink>
           </ul>
         )}
@@ -64,29 +105,74 @@ const Sidebar = () => {
         {/* ---------- CÁC TUYẾN ĐƯỜNG DÀNH CHO BÁC SĨ ---------- */}
         {dToken && (
           <ul className="mt-5">
-            <NavLink to={"/doctor-dashboard"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.home_icon} alt="" />
-              <p className="hidden md:block">Bảng điều khiển</p>
+            <NavLink to={"/doctor-dashboard"} end className={navLinkStyles}>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.home_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Bảng điều khiển</p>
+                </>
+              )}
             </NavLink>
 
             <NavLink to={"/doctor-availability"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.add_icon} alt="" />
-              <p className="hidden md:block">Lịch làm việc</p>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.add_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Lịch làm việc</p>
+                </>
+              )}
             </NavLink>
 
             <NavLink to={"/doctor-appointments"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.appointment_icon} alt="" />
-              <p className="hidden md:block">Lịch hẹn</p>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.appointment_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Lịch hẹn</p>
+                </>
+              )}
             </NavLink>
 
-            <NavLink to={"/doctor-profile"} className={navLinkStyles}>
-              <img className="min-w-5" src={assets.people_icon} alt="" />
-              <p className="hidden md:block">Hồ sơ</p>
+            <NavLink to={"/doctor-profile"} end className={navLinkStyles}>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5"
+                    style={iconStyle(isActive)}
+                    src={assets.people_icon}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Hồ sơ</p>
+                </>
+              )}
             </NavLink>
 
             <NavLink to={"/doctor-security"} className={navLinkStyles}>
-              <img className="min-w-5 opacity-70" src={assets.setting} alt="" />
-              <p className="hidden md:block">Cài đặt</p>
+              {({ isActive }) => (
+                <>
+                  <img
+                    className="min-w-5 opacity-70"
+                    style={iconStyle(isActive)}
+                    src={assets.setting}
+                    alt=""
+                  />
+                  <p className="hidden md:block">Cài đặt</p>
+                </>
+              )}
             </NavLink>
           </ul>
         )}
@@ -97,6 +183,7 @@ const Sidebar = () => {
         <div className="border-t border-gray-100 p-4 bg-gray-50/50">
           <NavLink
             to={"/doctor-profile"}
+            end
             className={({ isActive }) =>
               `flex items-center gap-3 p-2 rounded-xl transition-all duration-300 hover:bg-white hover:shadow-sm cursor-pointer group ${
                 isActive
@@ -105,14 +192,12 @@ const Sidebar = () => {
               }`
             }
           >
-            {/* Ảnh đại diện bác sĩ */}
             <img
               className="w-10 h-10 rounded-full object-cover border border-blue-100 bg-white shadow-inner flex-shrink-0"
               src={profileData?.image || assets.people_icon}
               alt="Doctor Avatar"
             />
 
-            {/* Tên và Chuyên khoa */}
             <div className="hidden md:block min-w-0 flex-1">
               <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-primary transition-colors">
                 {profileData?.name || "Bác sĩ"}

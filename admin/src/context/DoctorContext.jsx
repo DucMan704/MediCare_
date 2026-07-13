@@ -7,7 +7,25 @@ export const DoctorContext = createContext();
 // Lấy URL backend từ biến môi trường
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-// Cấu hình bộ đánh chặn (Interceptor) cho toàn bộ request Axios của Doctor
+import axios from "axios";
+import { toast } from "react-toastify"; // Thay bằng thư viện toast của bạn nếu khác
+
+// --- CẤU HÌNH BIẾN PHỤC VỤ HÀNG ĐỢI CHỐNG LỖI KÉP CHO DOCTOR ---
+let isDoctorRefreshing = false;
+let doctorFailedQueue = [];
+
+const processDoctorQueue = (error, token = null) => {
+  doctorFailedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  doctorFailedQueue = [];
+};
+
+// --- CẤU HÌNH BỘ ĐÁNH CHẶN (INTERCEPTOR) CHO REQ/RES CỦA DOCTOR ---
 axios.interceptors.response.use(
   (response) => {
     // Nếu API gọi thành công, trả về kết quả bình thường
@@ -24,31 +42,54 @@ axios.interceptors.response.use(
     ) {
       originalRequest._retry = true; // Đánh dấu để không bị lặp vô hạn nếu refresh thất bại
 
+      // 🛑 TRƯỜNG HỢP 1: ĐANG CÓ MỘT REQUEST REFRESH TOKEN KHÁC CỦA DOCTOR ĐANG CHẠY
+      // Đẩy các request lỗi sau đó vào hàng đợi, chờ lấy dToken mới
+      if (isDoctorRefreshing) {
+        return new Promise((resolve, reject) => {
+          doctorFailedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers["token"] = token; // Khớp với header 'token' của bạn
+            return axios(originalRequest); // Chạy lại request ban đầu với token mới
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      // 🚀 TRƯỜNG HỢP 2: ĐÂY LÀ REQUEST ĐẦU TIÊN BỊ HẾT HẠN (TIẾN HÀNH REFRESH)
+      isDoctorRefreshing = true;
+
       try {
         // 1. Tự động gọi API refresh-token dành cho Doctor ở Backend
-        // Sử dụng với credentials để gửi kèm cookie HttpOnly chứa refreshToken
+        // Sử dụng với credentials để gửi kèm cookie HttpOnly chứa chứa refreshToken
         const { data } = await axios.post(
           `${backendUrl}/api/doctor/refresh-token`,
           {},
           { withCredentials: true },
         );
 
-        // Khớp với dữ liệu trả về từ hàm backend (res.json({ accessToken }))
+        // Khớp chuẩn với dữ liệu trả về từ hàm backend của bạn (Trả về: accessToken)
         if (data && data.accessToken) {
           const newAccessToken = data.accessToken;
 
-          // 2. Lưu Access Token mới vào Local Storage (dùng dToken để phân biệt với user)
+          // 2. Lưu Access Token mới vào Local Storage dưới tên "dToken"
           localStorage.setItem("dToken", newAccessToken);
 
-          // 3. Cập nhật lại header cho request bị lỗi lúc nãy
-          // Lưu ý: Đổi tên header 'token' hoặc 'Authorization' tùy thuộc vào Middleware xác thực ở Backend của bạn
+          // 3. Cập nhật lại header 'token' cho request hiện tại
           originalRequest.headers["token"] = newAccessToken;
 
-          // 4. Thực hiện lại request cũ với token mới
+          // 4. Giải phóng toàn bộ các request của doctor đang bị nghẽn trong hàng đợi
+          processDoctorQueue(null, newAccessToken);
+
+          // 5. Thực hiện lại request cũ với token mới
           return axios(originalRequest);
+        } else {
+          throw new Error("Không nhận được accessToken mới từ hệ thống");
         }
       } catch (refreshError) {
-        // NẾU REFRESH TOKEN CŨNG HẾT HẠN HOẶC HỢP LỆ (Bị xóa trong DB)
+        // Kích hoạt lỗi cho tất cả các request đang xếp hàng chờ
+        processDoctorQueue(refreshError, null);
+
+        // NẾU REFRESH TOKEN CŨNG HẾT HẠN HOẶC KHÔNG HỢP LỆ (Bị xóa trong DB)
         console.warn("Phiên đăng nhập của Bác sĩ đã hết hạn hoàn toàn!");
 
         // Xóa sạch token cũ của doctor
@@ -62,6 +103,9 @@ axios.interceptors.response.use(
         }, 1500);
 
         return Promise.reject(refreshError);
+      } finally {
+        // Đảm bảo luôn hạ cờ hiệu xuống sau khi xử lý xong (dù thành công hay thất bại)
+        isDoctorRefreshing = false;
       }
     }
 

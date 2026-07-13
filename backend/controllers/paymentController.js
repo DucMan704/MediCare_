@@ -8,6 +8,7 @@ import {
 } from "vnpay";
 import vnpay from "../config/vnpay.js";
 import "dotenv/config";
+import invoiceModel from "../models/invoiceModel.js";
 
 import { findDoctorFeeByAppointmentId } from "./userController.js";
 import appointmentModel from "../models/appointmentModel.js";
@@ -104,22 +105,56 @@ export const checkPaymentVNPay = async (req, res) => {
     // 4. XỬ LÝ KHI THANH TOÁN THÀNH CÔNG (Mã vnp_ResponseCode === "00")
     const txnRef = queryData.vnp_TxnRef;
     const appointmentId = txnRef.split("_")[0]; // Tách chuỗi lấy lại appointmentId ban đầu
-    // Cập nhật trạng thái thanh toán của cuộc hẹn trong database thành TRUE
+
+    // 4.1. Kiểm tra xem hóa đơn này đã từng được tạo chưa (Tránh trùng lặp do user F5 trang web)
+    const existingInvoice = await invoiceModel.findOne({
+      vnpTransactionNo: queryData.vnp_TransactionNo,
+    });
+    if (existingInvoice) {
+      return res.status(200).json({
+        success: true,
+        message: "Thanh toán thành công (Hóa đơn đã được xử lý trước đó).",
+        data: existingInvoice,
+      });
+    }
+
+    // 4.2. Cập nhật trạng thái thanh toán của cuộc hẹn trong database thành TRUE
+    // Đồng thời populate thông tin user và doctor để lấy thông tin viết hóa đơn
     const updatedAppointment = await appointmentModel.findByIdAndUpdate(
       appointmentId,
       { payment: true },
       { new: true },
     );
+
     if (!updatedAppointment) {
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy lịch hẹn tương ứng để cập nhật dữ liệu",
       });
     }
+
+    // 4.3. Tiến hành tạo Hóa đơn chuẩn đầy đủ thông tin
+    const invoiceNo = `INV-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`; // Tạo mã hóa đơn độc nhất
+
+    const newInvoice = await invoiceModel.create({
+      invoiceNo: invoiceNo,
+      appointmentId: updatedAppointment._id,
+      userId: updatedAppointment.userId, // Giả định trường này lưu ID của Người dùng trong appointmentModel
+      doctorId: updatedAppointment.doctorId, // Giả định trường này lưu ID của Bác sĩ trong appointmentModel
+      amount: queryData.vnp_Amount,
+      paymentMethod: "VNPay",
+      bankCode: queryData.vnp_BankCode,
+      vnpTransactionNo: queryData.vnp_TransactionNo,
+      orderInfo: queryData.vnp_OrderInfo,
+      status: "paid",
+      paidAt: new Date(),
+    });
+
+    // 5. Trả kết quả kèm thông tin hóa đơn chi tiết về cho Frontend hiển thị
     return res.status(200).json({
       success: true,
-      message: "Thanh toán thành công và đã cập nhật lịch hẹn!",
-      data: verify,
+      message: "Thanh toán thành công và đã khởi tạo hóa đơn thành công!",
+      invoice: newInvoice,
     });
   } catch (error) {
     console.error("Verify VNPay Return Error:", error);

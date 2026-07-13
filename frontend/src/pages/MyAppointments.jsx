@@ -97,6 +97,10 @@ const MyAppointments = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("date_desc");
+  // State quản lý lịch hẹn đang chọn để xem hóa đơn
+  const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] =
+    useState(null);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   const selectedStripeAppointment = appointments.find(
     (appointment) => appointment._id === stripeAppointmentId,
@@ -435,145 +439,271 @@ const MyAppointments = () => {
           </div>
         </div>
 
-        <div className="mt-5 flex flex-col gap-4">
-          {visibleAppointments.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-white py-16 text-center text-sm text-gray-400">
-              <Inbox size={22} className="text-gray-300" />
-              {hasActiveFilters
-                ? "Không tìm thấy lịch hẹn phù hợp"
-                : "Bạn chưa có lịch hẹn nào"}
-            </div>
-          ) : (
-            visibleAppointments.map((item) => {
-              const status = getAppointmentStatus(item);
-              const meta = STATUS_META[status];
+        <div>
+          <div className="mt-5 flex flex-col gap-4">
+            {visibleAppointments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-white py-16 text-center text-sm text-gray-400">
+                <Inbox size={22} className="text-gray-300" />
+                {hasActiveFilters
+                  ? "Không tìm thấy lịch hẹn phù hợp"
+                  : "Bạn chưa có lịch hẹn nào"}
+              </div>
+            ) : (
+              visibleAppointments.map((item) => {
+                const status = getAppointmentStatus(item);
+                const meta = STATUS_META[status];
 
-              return (
-                <div
-                  key={item._id}
-                  className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
-                >
-                  <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
-                    <img
-                      className="h-28 w-28 self-start rounded-xl bg-[#EAEFFF] object-cover"
-                      src={item.docData.image}
-                      alt=""
-                    />
-                    <div className="flex-1 text-sm text-[#5E5E5E]">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-base font-semibold text-[#262626]">
-                          {item.docData.name}
-                        </p>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${meta.badge}`}
-                        >
-                          {meta.label}
-                        </span>
-                      </div>
-                      <p className="text-primary">
-                        {translateSpeciality(item.docData.speciality)}
-                      </p>
-                      <div className="mt-2 flex items-start gap-1.5 text-xs text-gray-500">
-                        <MapPin size={14} className="mt-0.5 shrink-0" />
-                        <span>
-                          {item.docData.address.line1},{" "}
-                          {item.docData.address.line2}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500">
-                        <Clock size={14} className="shrink-0" />
-                        <span>
-                          {formatSlotDate(item.slotDate)} | {item.slotTime}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex w-full flex-col justify-center gap-2 text-sm sm:w-52">
-                      {!item.cancelled &&
-                        !item.payment &&
-                        !item.isCompleted && (
-                          <button
-                            disabled={!item.isAccepted}
-                            onClick={() =>
-                              item.isAccepted && setPayment(item._id)
-                            }
-                            className={`w-full rounded-lg border py-2 text-center transition-all duration-300 ${item.isAccepted ? "text-[#696969] hover:bg-primary hover:text-white" : "cursor-not-allowed bg-gray-100 text-gray-400 opacity-60"}`}
+                return (
+                  <div
+                    key={item._id}
+                    className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
+                      <img
+                        className="h-28 w-28 self-start rounded-xl bg-[#EAEFFF] object-cover"
+                        src={item.docData.image}
+                        alt=""
+                      />
+                      <div className="flex-1 text-sm text-[#5E5E5E]">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-base font-semibold text-[#262626]">
+                            {item.docData.name}
+                          </p>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${meta.badge}`}
                           >
-                            Thanh toán online
-                          </button>
-                        )}
+                            {meta.label}
+                          </span>
+                        </div>
+                        <p className="text-primary">
+                          {translateSpeciality(item.docData.speciality)}
+                        </p>
+                        <div className="mt-2 flex items-start gap-1.5 text-xs text-gray-500">
+                          <MapPin size={14} className="mt-0.5 shrink-0" />
+                          <span>
+                            {item.docData.address.line1},{" "}
+                            {item.docData.address.line2}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500">
+                          <Clock size={14} className="shrink-0" />
+                          <span>
+                            {formatSlotDate(item.slotDate)} | {item.slotTime}
+                          </span>
+                        </div>
+                      </div>
 
-                      {/* KHU VỰC CHỌN CỔNG THANH TOÁN KHI BẤM THANH TOÁN ONLINE */}
-                      {!item.cancelled &&
-                        !item.payment &&
-                        !item.isCompleted &&
-                        item.isAccepted &&
-                        payment === item._id && (
-                          <div className="mt-1 grid grid-cols-2 gap-2 animate-fadeIn">
-                            {/* Nút VNPay mới thêm */}
+                      <div className="flex w-full flex-col justify-center gap-2 text-sm sm:w-52">
+                        {!item.cancelled &&
+                          !item.payment &&
+                          !item.isCompleted && (
                             <button
-                              onClick={() => appointmentVNPay(item._id)}
-                              className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-blue-50 hover:border-blue-300"
+                              disabled={!item.isAccepted}
+                              onClick={() =>
+                                item.isAccepted && setPayment(item._id)
+                              }
+                              className={`w-full rounded-lg border py-2 text-center transition-all duration-300 ${item.isAccepted ? "text-[#696969] hover:bg-primary hover:text-white" : "cursor-not-allowed bg-gray-100 text-gray-400 opacity-60"}`}
                             >
-                              <img
-                                className="max-h-5 object-contain"
-                                src={
-                                  assets.vnpay_logo ||
-                                  "https://sandbox.vnpayment.vn/paymentv2/Images/brands/logo-vnpay.svg"
-                                }
-                                alt="VNPay"
-                              />
+                              Thanh toán online
                             </button>
+                          )}
 
-                            <button
-                              onClick={() => appointmentStripe(item._id)}
-                              className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-gray-50"
-                            >
-                              <img
-                                className="max-h-5 max-w-20"
-                                src={assets.stripe_logo}
-                                alt="Stripe"
-                              />
+                        {/* KHU VỰC CHỌN CỔNG THANH TOÁN KHI BẤM THANH TOÁN ONLINE */}
+                        {!item.cancelled &&
+                          !item.payment &&
+                          !item.isCompleted &&
+                          item.isAccepted &&
+                          payment === item._id && (
+                            <div className="mt-1 grid grid-cols-2 gap-2 animate-fadeIn">
+                              <button
+                                onClick={() => appointmentVNPay(item._id)}
+                                className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-blue-50 hover:border-blue-300"
+                              >
+                                <img
+                                  className="max-h-5 object-contain"
+                                  src={
+                                    assets.vnpay_logo ||
+                                    "https://sandbox.vnpayment.vn/paymentv2/Images/brands/logo-vnpay.svg"
+                                  }
+                                  alt="VNPay"
+                                />
+                              </button>
+
+                              <button
+                                onClick={() => appointmentStripe(item._id)}
+                                className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-gray-50"
+                              >
+                                <img
+                                  className="max-h-5 max-w-20"
+                                  src={assets.stripe_logo}
+                                  alt="Stripe"
+                                />
+                              </button>
+                            </div>
+                          )}
+
+                        {/* NÚT TRẠNG THÁI ĐÃ THANH TOÁN & NÚT XEM HÓA ĐƠN ĐI KÈM */}
+                        {!item.cancelled &&
+                          item.payment &&
+                          !item.isCompleted && (
+                            <div className="flex flex-col gap-1.5">
+                              <button className="w-full cursor-default rounded-lg border bg-[#EAEFFF] py-2 font-medium text-primary">
+                                Đã thanh toán
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoiceAppointment(item);
+                                  setShowInvoiceModal(true);
+                                }}
+                                className="w-full rounded-lg border border-gray-200 bg-white py-1.5 text-xs text-gray-600 transition-all hover:bg-gray-50 hover:text-black"
+                              >
+                                📄 Xem hóa đơn thanh toán
+                              </button>
+                            </div>
+                          )}
+
+                        {item.isCompleted && (
+                          <div className="flex flex-col gap-1.5">
+                            <button className="w-full rounded-lg border border-green-500 py-2 text-green-500 font-medium">
+                              Hoàn thành
                             </button>
+                            {item.payment && (
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoiceAppointment(item);
+                                  setShowInvoiceModal(true);
+                                }}
+                                className="w-full rounded-lg border border-gray-200 bg-white py-1.5 text-xs text-gray-600 transition-all hover:bg-gray-50 hover:text-black"
+                              >
+                                📄 Xem hóa đơn thanh toán
+                              </button>
+                            )}
                           </div>
                         )}
 
-                      {!item.cancelled && item.payment && !item.isCompleted && (
-                        <button className="w-full rounded-lg border bg-[#EAEFFF] py-2 text-[#696969]">
-                          Đã thanh toán
-                        </button>
-                      )}
-                      {item.isCompleted && (
-                        <button className="w-full rounded-lg border border-green-500 py-2 text-green-500">
-                          Hoàn thành
-                        </button>
-                      )}
-                      {!item.cancelled && !item.isCompleted && (
-                        <button
-                          onClick={() => cancelAppointment(item._id)}
-                          className="w-full rounded-lg border py-2 text-[#696969] transition-all duration-300 hover:bg-red-600 hover:text-white"
-                        >
-                          Hủy lịch hẹn
-                        </button>
-                      )}
-                      {item.cancelled && !item.isCompleted && (
-                        <button className="w-full rounded-lg border border-red-500 py-2 text-red-500">
-                          Đã hủy lịch hẹn
-                        </button>
-                      )}
-                      {!item.cancelled &&
-                        !item.payment &&
-                        !item.isCompleted &&
-                        !item.isAccepted && (
-                          <p className="text-center text-xs text-gray-400">
-                            Chờ bác sĩ xác nhận trước khi thanh toán
-                          </p>
+                        {!item.cancelled && !item.isCompleted && (
+                          <button
+                            onClick={() => cancelAppointment(item._id)}
+                            className="w-full rounded-lg border py-2 text-[#696969] transition-all duration-300 hover:bg-red-600 hover:text-white"
+                          >
+                            Hủy lịch hẹn
+                          </button>
                         )}
+                        {item.cancelled && !item.isCompleted && (
+                          <button className="w-full rounded-lg border border-red-500 py-2 text-red-500">
+                            Đã hủy lịch hẹn
+                          </button>
+                        )}
+                        {!item.cancelled &&
+                          !item.payment &&
+                          !item.isCompleted &&
+                          !item.isAccepted && (
+                            <p className="text-center text-xs text-gray-400">
+                              Chờ bác sĩ xác nhận trước khi thanh toán
+                            </p>
+                          )}
+                      </div>
                     </div>
                   </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* ==================== POPUP MODAL HIỂN THỊ HÓA ĐƠN CHUẨN ==================== */}
+          {showInvoiceModal && selectedInvoiceAppointment && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn">
+              <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
+                {/* Header hóa đơn */}
+                <div className="bg-primary p-5 text-center text-white">
+                  <h3 className="text-lg font-bold uppercase tracking-wide">
+                    Hóa Đơn Thanh Toán
+                  </h3>
+                  <p className="mt-1 text-xs opacity-80">
+                    Mã giao dịch điện tử hệ thống
+                  </p>
                 </div>
-              );
-            })
+
+                {/* Thân hóa đơn */}
+                <div className="p-6 text-sm text-gray-600">
+                  <div className="mb-4 flex justify-between border-b border-dashed border-gray-200 pb-3">
+                    <span className="font-medium text-gray-800">
+                      Mã lịch hẹn:
+                    </span>
+                    <span className="font-mono text-gray-900 font-semibold">
+                      {selectedInvoiceAppointment._id}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 pb-4">
+                    <div className="flex justify-between">
+                      <span>Bác sĩ khám:</span>
+                      <span className="font-medium text-gray-900">
+                        {selectedInvoiceAppointment.docData.name}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Chuyên khoa:</span>
+                      <span className="text-gray-900">
+                        {translateSpeciality(
+                          selectedInvoiceAppointment.docData.speciality,
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Thời gian khám:</span>
+                      <span className="text-gray-900">
+                        {selectedInvoiceAppointment.slotTime} -{" "}
+                        {formatSlotDate(selectedInvoiceAppointment.slotDate)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Hình thức thanh toán:</span>
+                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                        Cổng Online (VNPay/Stripe)
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Trạng thái đơn:</span>
+                      <span className="text-green-600 font-medium">
+                        ● Thành công
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Khối hiển thị số tiền thanh toán tổng */}
+                  <div className="mt-4 rounded-xl bg-gray-50 p-4 flex justify-between items-center border border-gray-100">
+                    <span className="text-base font-semibold text-gray-800">
+                      Tổng tiền chi trả:
+                    </span>
+                    <span className="text-xl font-bold text-primary">
+                      {Number(
+                        selectedInvoiceAppointment.amount ||
+                          selectedInvoiceAppointment.docData.fees,
+                      ).toLocaleString("vi-VN")}{" "}
+                      đ
+                    </span>
+                  </div>
+
+                  <p className="mt-5 text-center text-xs text-gray-400 italic">
+                    Cảm ơn bạn đã tin tưởng dịch vụ Medicare của chúng tôi!
+                  </p>
+                </div>
+
+                {/* Nút Đóng */}
+                <div className="border-t border-gray-100 bg-gray-50 px-6 py-3.5 flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowInvoiceModal(false);
+                      setSelectedInvoiceAppointment(null);
+                    }}
+                    className="rounded-lg bg-gray-200 px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300"
+                  >
+                    Đóng cửa sổ
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
