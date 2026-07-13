@@ -5,107 +5,124 @@ import { DoctorContext } from "../context/DoctorContext";
 import { AdminContext } from "../context/AdminContext";
 
 const Sidebar = () => {
-  const { dToken } = useContext(DoctorContext);
+  const { dToken, profileData } = useContext(DoctorContext);
   const { aToken } = useContext(AdminContext);
 
+  // Style đồng bộ 100% cho các nút menu
+  const navLinkStyles = ({ isActive }) =>
+    `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer transition-all duration-200 ${
+      isActive
+        ? "bg-[#F2F3FF] border-r-4 border-primary text-primary font-semibold"
+        : "text-[#515151] hover:bg-gray-50 hover:text-gray-700"
+    }`;
+
   return (
-    <div className="min-h-screen bg-white border-r">
-      {/* ---------- CÁC TUYẾN ĐƯỜNG DÀNH CHO ADMIN ---------- */}
-      {aToken && (
-        <ul className="text-[#515151] mt-5">
-          <NavLink
-            to={"/admin-dashboard"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.home_icon} alt="" />
-            <p className="hidden md:block">Bảng điều khiển</p>
-          </NavLink>
+    <div className="h-screen sticky top-0 bg-white border-r flex flex-col justify-between overflow-y-auto">
+      {/* KHỐI TRÊN: Chứa các Menu Điều Hướng */}
+      <div>
+        {/* ---------- CÁC TUYẾN ĐƯỜNG DÀNH CHO ADMIN ---------- */}
+        {aToken && (
+          <ul className="mt-5">
+            <NavLink to={"/admin-dashboard"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.home_icon} alt="" />
+              <p className="hidden md:block">Bảng điều khiển</p>
+            </NavLink>
 
-          <NavLink
-            to={"/all-appointments"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.appointment_icon} alt="" />
-            <p className="hidden md:block">Lịch hẹn</p>
-          </NavLink>
+            <NavLink to={"/all-appointments"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.appointment_icon} alt="" />
+              <p className="hidden md:block">Lịch hẹn</p>
+            </NavLink>
 
-          <NavLink
-            to={"/add-doctor"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.add_icon} alt="" />
-            <p className="hidden md:block">Thêm bác sĩ</p>
-          </NavLink>
+            <NavLink to={"/add-doctor"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.add_icon} alt="" />
+              <p className="hidden md:block">Thêm bác sĩ</p>
+            </NavLink>
 
-          <NavLink
-            to={"/doctor-list"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.people_icon} alt="" />
-            <p className="hidden md:block">Danh sách bác sĩ</p>
-          </NavLink>
+            <NavLink to={"/doctor-list"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.people_icon} alt="" />
+              <p className="hidden md:block">Danh sách bác sĩ</p>
+            </NavLink>
 
-          {/* 🟢 THÊM MỚI: Danh sách bệnh nhân dành cho Admin */}
-          <NavLink
-            to={"/patients-list"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.people_icon} alt="" />
-            <p className="hidden md:block">Danh sách bệnh nhân</p>
-          </NavLink>
-        </ul>
-      )}
+            <NavLink to={"/patients-list"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.people_icon} alt="" />
+              <p className="hidden md:block">Danh sách bệnh nhân</p>
+            </NavLink>
 
-      {/* ---------- CÁC TUYẾN ĐƯỜNG DÀNH CHO BÁC SĨ ---------- */}
+            {/* 🛡️ TAB MỚI: Bảo mật dành cho Admin */}
+            <NavLink to={"/admin/security"} className={navLinkStyles}>
+              <img
+                className="min-w-5 opacity-70"
+                src={assets.info_icon}
+                alt=""
+              />{" "}
+              {/* Bạn có thể đổi ảnh icon bảo mật phù hợp */}
+              <p className="hidden md:block">Cài đặt bảo mật</p>
+            </NavLink>
+          </ul>
+        )}
+
+        {/* ---------- CÁC TUYẾN ĐƯỜNG DÀNH CHO BÁC SĨ ---------- */}
+        {dToken && (
+          <ul className="mt-5">
+            <NavLink to={"/doctor-dashboard"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.home_icon} alt="" />
+              <p className="hidden md:block">Bảng điều khiển</p>
+            </NavLink>
+
+            <NavLink to={"/doctor-availability"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.add_icon} alt="" />
+              <p className="hidden md:block">Lịch làm việc</p>
+            </NavLink>
+
+            <NavLink to={"/doctor-appointments"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.appointment_icon} alt="" />
+              <p className="hidden md:block">Lịch hẹn</p>
+            </NavLink>
+
+            <NavLink to={"/doctor-profile"} className={navLinkStyles}>
+              <img className="min-w-5" src={assets.people_icon} alt="" />
+              <p className="hidden md:block">Hồ sơ</p>
+            </NavLink>
+
+            <NavLink to={"/doctor-security"} className={navLinkStyles}>
+              <img className="min-w-5 opacity-70" src={assets.setting} alt="" />
+              <p className="hidden md:block">Cài đặt</p>
+            </NavLink>
+          </ul>
+        )}
+      </div>
+
+      {/* KHỐI DƯỚI ĐÁY: Profile thu nhỏ của Bác sĩ khi đăng nhập */}
       {dToken && (
-        <ul className="text-[#515151] mt-5">
-          <NavLink
-            to={"/doctor-dashboard"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.home_icon} alt="" />
-            <p className="hidden md:block">Bảng điều khiển</p>
-          </NavLink>
-          <NavLink
-            to={"/doctor-availability"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.add_icon} alt="" />
-            <p className="hidden md:block">Lịch làm việc</p>
-          </NavLink>
-          <NavLink
-            to={"/doctor-appointments"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
-            }
-          >
-            <img className="min-w-5" src={assets.appointment_icon} alt="" />
-            <p className="hidden md:block">Lịch hẹn</p>
-          </NavLink>
+        <div className="border-t border-gray-100 p-4 bg-gray-50/50">
           <NavLink
             to={"/doctor-profile"}
             className={({ isActive }) =>
-              `flex items-center gap-3 py-3.5 px-3 md:px-9 md:min-w-72 cursor-pointer ${isActive ? "bg-[#F2F3FF] border-r-4 border-primary" : ""}`
+              `flex items-center gap-3 p-2 rounded-xl transition-all duration-300 hover:bg-white hover:shadow-sm cursor-pointer group ${
+                isActive
+                  ? "bg-white shadow-sm ring-1 ring-primary/30 text-primary"
+                  : "text-[#515151]"
+              }`
             }
           >
-            <img className="min-w-5" src={assets.people_icon} alt="" />
-            <p className="hidden md:block">Hồ sơ</p>
+            {/* Ảnh đại diện bác sĩ */}
+            <img
+              className="w-10 h-10 rounded-full object-cover border border-blue-100 bg-white shadow-inner flex-shrink-0"
+              src={profileData?.image || assets.people_icon}
+              alt="Doctor Avatar"
+            />
+
+            {/* Tên và Chuyên khoa */}
+            <div className="hidden md:block min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-primary transition-colors">
+                {profileData?.name || "Bác sĩ"}
+              </p>
+              <p className="text-xs text-gray-400 truncate mt-0.5">
+                {profileData?.speciality || "Chuyên gia y tế"}
+              </p>
+            </div>
           </NavLink>
-        </ul>
+        </div>
       )}
     </div>
   );

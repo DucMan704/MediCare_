@@ -2,6 +2,7 @@ import React, { useContext, useMemo, useState } from "react";
 import { AppContext } from "../context/AppContext";
 import { useNavigate, useParams } from "react-router-dom";
 import { specialityList, translateSpeciality } from "../utils/i18n";
+import { assets, specialityData } from "../assets/assets"; // ĐÃ THÊM IMPORT THÀNH CÔNG
 import {
   Search,
   ArrowUpDown,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
-/* Helpers                                                             */
+/* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
 // Renders 5 stars with a partial fill based on `value` (0–5, decimals ok).
@@ -125,7 +126,7 @@ const Doctors = () => {
           )}
         </div>
 
-        <label className="flex items-center gap-2 whitespace-nowrap text-sm text-gray-600">
+        <label className="flex items-center gap-2 whitespace-nowrap text-sm text-gray-600 cursor-pointer">
           <input
             type="checkbox"
             checked={availableOnly}
@@ -168,37 +169,65 @@ const Doctors = () => {
 
         {/* Danh sách chuyên khoa */}
         <div
-          className={`flex-col gap-3 text-sm text-gray-700 ${
+          className={`flex-col gap-3 text-sm text-gray-700 w-full sm:w-auto ${
             showFilter ? "flex" : "hidden sm:flex"
           }`}
         >
-          <button
-            onClick={() => navigate("/doctors")}
-            className={`w-full rounded-lg border px-5 py-3 text-left transition-all duration-300 hover:bg-[#EEF2FF] sm:w-60 ${
-              !speciality
-                ? "border-primary bg-[#E2E5FF] font-medium text-primary"
-                : "border-gray-300 bg-white"
-            }`}
-          >
-            Tất cả chuyên khoa
-          </button>
-          {specialityList.map((spec) => (
+          <div className="flex flex-col gap-2">
+            {/* Nút tất cả chuyên khoa */}
             <button
-              key={spec}
-              onClick={() =>
-                speciality === spec
-                  ? navigate("/doctors")
-                  : navigate(`/doctors/${spec}`)
-              }
-              className={`w-full rounded-lg border px-5 py-3 text-left transition-all duration-300 hover:bg-[#EEF2FF] sm:w-60 ${
-                speciality === spec
+              onClick={() => navigate("/doctors")}
+              className={`w-full flex items-center gap-3 rounded-lg border px-5 py-3 text-left transition-all duration-300 hover:bg-[#EEF2FF] sm:w-60 ${
+                !speciality
                   ? "border-primary bg-[#E2E5FF] font-medium text-primary"
-                  : "border-gray-300 bg-white"
+                  : "border-gray-300 bg-white text-gray-600"
               }`}
             >
-              {translateSpeciality(spec)}
+              <span className="w-6 h-6 flex items-center justify-center font-bold text-sm bg-gray-100 rounded-full text-gray-500">
+                ☰
+              </span>
+              Tất cả chuyên khoa
             </button>
-          ))}
+
+            {/* Danh sách các chuyên khoa cụ thể */}
+            {specialityList.map((spec) => {
+              // Tự động tìm kiếm object trùng khớp từ specialityData bằng tiếng Việt chuẩn
+              const matchedSpec = specialityData.find(
+                (item) =>
+                  item.speciality.toLowerCase() ===
+                  translateSpeciality(spec).toLowerCase(),
+              );
+
+              return (
+                <button
+                  key={spec}
+                  onClick={() =>
+                    speciality === spec
+                      ? navigate("/doctors")
+                      : navigate(`/doctors/${spec}`)
+                  }
+                  className={`w-full flex items-center gap-3 rounded-lg border px-5 py-3 text-left transition-all duration-300 hover:bg-[#EEF2FF] sm:w-60 ${
+                    speciality === spec
+                      ? "border-primary bg-[#E2E5FF] font-medium text-primary"
+                      : "border-gray-300 bg-white text-gray-600"
+                  }`}
+                >
+                  {/* Hiển thị Icon thông minh trực tiếp từ assets */}
+                  {matchedSpec?.image && (
+                    <img
+                      src={matchedSpec.image}
+                      alt={translateSpeciality(spec)}
+                      className={`w-6 h-6 object-contain transition-all ${
+                        speciality === spec ? "scale-110" : "opacity-70"
+                      }`}
+                    />
+                  )}
+
+                  <span>{translateSpeciality(spec)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Danh sách bác sĩ */}
@@ -211,21 +240,22 @@ const Doctors = () => {
                 : "Chưa có bác sĩ nào trong danh mục này"}
             </div>
           ) : (
-            <div className="grid-cols-auto grid w-full gap-4 gap-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-6 w-full">
               {filteredDoctors.map((item) => (
                 <div
                   key={item._id}
                   onClick={() => {
                     navigate(`/appointment/${item._id}`);
-                    scrollTo({
+                    window.scrollTo({
                       top: 0,
                       behavior: "smooth",
                     });
                   }}
-                  className="cursor-pointer overflow-hidden rounded-xl border border-[#C9D8FF] transition-all duration-500 hover:-translate-y-2 hover:shadow-md"
+                  className="cursor-pointer overflow-hidden rounded-xl border border-[#C9D8FF] bg-white transition-all duration-500 hover:-translate-y-2 hover:shadow-md group"
                 >
+                  {/* SỬA CHUẨN: Kích thước ảnh lấp đầy khung hình không bị méo */}
                   <img
-                    className="w-full bg-[#EAEFFF]"
+                    className="w-full h-48 object-cover bg-[#EAEFFF] transition-transform duration-500 group-hover:scale-105"
                     src={item.image}
                     alt={item.name}
                   />
@@ -238,7 +268,9 @@ const Doctors = () => {
                     >
                       <span
                         className={`h-2.5 w-2.5 rounded-full ${
-                          item.available ? "bg-green-500" : "bg-gray-500"
+                          item.available
+                            ? "bg-green-500 animate-pulse"
+                            : "bg-gray-500"
                         }`}
                       ></span>
                       <span>
@@ -246,7 +278,7 @@ const Doctors = () => {
                       </span>
                     </div>
 
-                    <h3 className="mt-2 text-lg font-semibold text-gray-800">
+                    <h3 className="mt-2 text-lg font-semibold text-gray-800 line-clamp-1">
                       {item.name}
                     </h3>
 
@@ -254,8 +286,7 @@ const Doctors = () => {
                       {translateSpeciality(item.speciality)}
                     </p>
 
-                    {/* Rating — expects doctors data to expose averageRating / totalReviews;
-                        hidden gracefully if your API doesn't provide these fields yet */}
+                    {/* Rating - Hiển thị nếu có dữ liệu đánh giá */}
                     {item.averageRating != null && item.totalReviews > 0 && (
                       <div className="mt-2 flex items-center gap-1.5">
                         <StarRating value={item.averageRating} size={13} />

@@ -5,12 +5,130 @@ import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
 import Review from "../models/reviewModel.js";
 import Session from "../models/sessionModel.js";
+import SecurityLog from "../models/securityLog.js";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
 // Cấu hình thời gian sống của Token
 const ACCESS_TOKEN_TTL = "30m"; // Đồng bộ hóa xuống jwt.sign ở dưới
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
+
+export const getSecurityLogs = async (req, res) => {
+  try {
+    const doctorId = req.doctor.id; // Lấy từ Middleware xác thực token authDoctor
+
+    // Lấy tham số phân trang từ query string (mặc định trang 1, mỗi trang 10 dòng)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // 1. Truy vấn DB: Lọc theo doctorId, sắp xếp mới nhất trước, áp dụng phân trang
+    const logs = await SecurityLog.find({ doctorId })
+      .sort({ createdAt: -1 }) // Mới nhất lên đầu
+      .skip(skip)
+      .limit(limit)
+      .select("action status ipAddress createdAt"); // Chỉ lấy các trường cần thiết cho FE
+
+    // 2. Đếm tổng số bản ghi để Frontend làm tính năng chuyển trang (nếu cần)
+    const totalLogs = await SecurityLog.countDocuments({ doctorId });
+
+    return res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: {
+        totalItems: totalLogs,
+        currentPage: page,
+        totalPages: Math.ceil(totalLogs / limit),
+        limit: limit,
+      },
+    });
+  } catch (error) {
+    console.error("Lỗi Get Security Logs API:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống, không thể tải nhật ký bảo mật.",
+    });
+  }
+};
+
+// @desc    Thay đổi mật khẩu bác sĩ
+// @route   PUT /api/doctor/change-password
+// @access  Private (Chỉ bác sĩ đã đăng nhập)
+export const changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const doctorId = req.doctor.id; // Lấy từ Middleware xác thực token authDoctor
+
+    // 1. Kiểm tra dữ liệu đầu vào
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ mật khẩu cũ và mới.",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu mới phải có tối thiểu 8 ký tự.",
+      });
+    }
+
+    // 2. Tìm bác sĩ trong Database
+    const doctor = await doctorModel.findById(doctorId);
+    if (!doctor) {
+      return res
+        .status(444)
+        .json({ success: false, message: "Không tìm thấy thông tin bác sĩ." });
+    }
+
+    // 3. Đối chiếu mật khẩu cũ người dùng nhập với mật khẩu đã mã hóa trong DB
+    const isMatch = await bcrypt.compare(oldPassword, doctor.password);
+
+    if (!isMatch) {
+      // 🟢 GHI LOG THẤT BẠI: Nếu nhập sai mật khẩu cũ
+      await SecurityLog.create({
+        doctorId,
+        action: "Thay đổi mật khẩu",
+        status: "Thất bại",
+        ipAddress: req.ip || req.headers["x-forwarded-for"],
+        userAgent: req.headers["user-agent"],
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu hiện tại không chính xác.",
+      });
+    }
+
+    // 4. Tiến hành mã hóa mật khẩu mới
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // 5. Cập nhật mật khẩu mới vào Database
+    doctor.password = hashedPassword;
+    await doctor.save();
+
+    // 🟢 GHI LOG THÀNH CÔNG: Lưu vết hoạt động thành công vào DB
+    await SecurityLog.create({
+      doctorId,
+      action: "Thay đổi mật khẩu",
+      status: "Thành công",
+      ipAddress: req.ip || req.headers["x-forwarded-for"],
+      userAgent: req.headers["user-agent"],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Thay đổi mật khẩu thành công. Hồ sơ của bạn đã được bảo vệ.",
+    });
+  } catch (error) {
+    console.error("Lỗi Change Password API:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Lỗi hệ thống, vui lòng thử lại sau." });
+  }
+};
 
 export const refreshToken = async (req, res) => {
   try {
@@ -129,6 +247,10 @@ const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Lấy IP và thông tin thiết bị của request hiện tại
+    const ipAddress = req.ip || req.headers["x-forwarded-for"];
+    const userAgent = req.headers["user-agent"];
+
     // Kiểm tra dữ liệu đầu vào
     if (!email || !password) {
       return res.status(400).json({
@@ -144,6 +266,7 @@ const loginDoctor = async (req, res) => {
     const doctor = await doctorModel.findOne({ email: normalizedEmail });
 
     if (!doctor) {
+      // 🛑 KHÔNG CÓ USER: Không cần ghi log bảo mật vì email này không tồn tại trong hệ thống của bạn (tránh rác DB)
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
@@ -154,6 +277,15 @@ const loginDoctor = async (req, res) => {
     const isMatch = await bcrypt.compare(password, doctor.password);
 
     if (!isMatch) {
+      // 🛑 GHI LOG THẤT BẠI: Mật khẩu sai (Tài khoản có tồn tại nhưng nhập sai)
+      await SecurityLog.create({
+        doctorId: doctor._id,
+        action: "Đăng nhập hệ thống",
+        status: "Thất bại",
+        ipAddress,
+        userAgent,
+      });
+
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
@@ -165,16 +297,28 @@ const loginDoctor = async (req, res) => {
       expiresIn: ACCESS_TOKEN_TTL,
     });
 
-    // tạo refresh token
+    // Tạo refresh token
     const refreshToken = crypto.randomBytes(64).toString("hex");
 
-    //lưu refresh token vào database
+    // 🌟 BỔ SUNG TẠI ĐÂY: Lưu thêm ipAddress và userAgent vào Session để phục vụ chức năng "Thiết bị đang hoạt động"
     await Session.create({
       ownerId: doctor._id,
       ownerType: "Doctor",
       refreshToken,
+      ipAddress, // Thêm trường này vào Schema Session của bạn nếu chưa có
+      userAgent, // Thêm trường này vào Schema Session của bạn nếu chưa có
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL), // 7 ngày
     });
+
+    // 🌟 BỔ SUNG TẠI ĐÂY: Ghi log Đăng nhập THÀNH CÔNG
+    await SecurityLog.create({
+      doctorId: doctor._id,
+      action: "Đăng nhập hệ thống",
+      status: "Thành công",
+      ipAddress,
+      userAgent,
+    });
+
     // Trả refreshtoken về trong cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,

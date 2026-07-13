@@ -504,7 +504,7 @@ const Appointment = () => {
             <div className="flex-1 space-y-1.5">
               {distribution.map((row) => (
                 <div key={row.star} className="flex items-center gap-2">
-                  <span className="w-8 text-xs text-gray-500">
+                  <span className="w-9 text-xs text-gray-500">
                     {row.star} sao
                   </span>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">

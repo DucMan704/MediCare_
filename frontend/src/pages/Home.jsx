@@ -7,6 +7,7 @@ import TopDoctors from "../components/TopDoctors";
 import Banner from "../components/Banner";
 import AIChatButton from "../components/AIChatButton";
 import AIDoctor from "./AIDoctor";
+import AIDiagnosis from "../components/AI_Diagnosis";
 
 // --- Component Helper: Bọc các section để tạo hiệu ứng trượt lên khi cuộn ---
 const FadeInScroll = ({ children, delay = 0 }) => {
@@ -45,6 +46,10 @@ const Home = () => {
 
       <FadeInScroll>
         <AIDoctor />
+      </FadeInScroll>
+
+      <FadeInScroll>
+        <AIDiagnosis />
       </FadeInScroll>
 
       <FadeInScroll>

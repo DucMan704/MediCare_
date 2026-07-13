@@ -21,16 +21,16 @@ const TopDoctors = () => {
             key={item._id}
             onClick={() => {
               navigate(`/appointment/${item._id}`);
-              scrollTo(0, 0);
+              window.scrollTo({ top: 0, behavior: "smooth" });
             }}
             className="group flex flex-col overflow-hidden rounded-xl border border-[#C9D8FF] bg-white cursor-pointer transition-all duration-300 hover:-translate-y-2 hover:shadow-xl"
           >
-            {/* Ảnh bác sĩ */}
-            <div className="w-full h-64 overflow-hidden bg-[#EAEFFF]">
+            {/* THAY ĐỔI TẠI ĐÂY: Khung ảnh cân đối không bị dài */}
+            <div className="w-full aspect-[4/3] overflow-hidden bg-[#EAEFFF]">
               <img
                 src={item.image}
                 alt={item.name}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
               />
             </div>
 
@@ -43,14 +43,16 @@ const TopDoctors = () => {
               >
                 <span
                   className={`w-2.5 h-2.5 rounded-full ${
-                    item.available ? "bg-green-500" : "bg-gray-500"
+                    item.available
+                      ? "bg-green-500 animate-pulse"
+                      : "bg-gray-500"
                   }`}
                 ></span>
 
                 <span>{item.available ? "Còn trống" : "Không có lịch"}</span>
               </div>
 
-              <h3 className="text-lg font-semibold text-[#262626]">
+              <h3 className="text-lg font-semibold text-[#262626] line-clamp-1">
                 {item.name}
               </h3>
 
@@ -65,9 +67,9 @@ const TopDoctors = () => {
       <button
         onClick={() => {
           navigate("/doctors");
-          scrollTo(0, 0);
+          window.scrollTo({ top: 0, behavior: "smooth" });
         }}
-        className="mt-10 rounded-full bg-[#EAEFFF] px-12 py-3 text-gray-600 transition hover:bg-[#dbe6ff]"
+        className="mt-10 rounded-full bg-[#EAEFFF] px-12 py-3 text-gray-600 font-medium transition hover:bg-[#dbe6ff]"
       >
         Xem thêm
       </button>

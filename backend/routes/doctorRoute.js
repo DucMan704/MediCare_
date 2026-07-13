@@ -14,6 +14,8 @@ import {
   getAvailability,
   getDoctorSlots,
   getDoctorReview,
+  changePassword,
+  getSecurityLogs,
 } from "../controllers/doctorController.js";
 import {
   getMedicalRecordsByUserId,
@@ -52,5 +54,7 @@ doctorRouter.post("/update-profile", authDoctor, updateDoctorProfile);
 doctorRouter.post("/update-availability", authDoctor, updateAvailability);
 doctorRouter.get("/get-availability", authDoctor, getAvailability);
 doctorRouter.get("/reviews/:docId", getDoctorReview);
+doctorRouter.put("/change-password", authDoctor, changePassword);
+doctorRouter.get("/security-logs", authDoctor, getSecurityLogs);
 
 export default doctorRouter;
