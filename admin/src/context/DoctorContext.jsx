@@ -7,9 +7,6 @@ export const DoctorContext = createContext();
 // Lấy URL backend từ biến môi trường
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-import axios from "axios";
-import { toast } from "react-toastify"; // Thay bằng thư viện toast của bạn nếu khác
-
 // --- CẤU HÌNH BIẾN PHỤC VỤ HÀNG ĐỢI CHỐNG LỖI KÉP CHO DOCTOR ---
 let isDoctorRefreshing = false;
 let doctorFailedQueue = [];

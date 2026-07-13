@@ -615,17 +615,20 @@ const MyAppointments = () => {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn">
               <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
                 {/* Header hóa đơn */}
-                <div className="bg-primary p-5 text-center text-white">
+                <div className="bg-primary p-5 text-center text-white relative">
                   <h3 className="text-lg font-bold uppercase tracking-wide">
                     Hóa Đơn Thanh Toán
                   </h3>
-                  <p className="mt-1 text-xs opacity-80">
-                    Mã giao dịch điện tử hệ thống
+                  <p className="mt-1 text-[11px] opacity-80 font-mono">
+                    Mã số:{" "}
+                    {selectedInvoiceAppointment.invoiceNo ||
+                      `INV-${selectedInvoiceAppointment._id.slice(-8).toUpperCase()}`}
                   </p>
                 </div>
 
                 {/* Thân hóa đơn */}
                 <div className="p-6 text-sm text-gray-600">
+                  {/* Khối Mã lịch hẹn gốc */}
                   <div className="mb-4 flex justify-between border-b border-dashed border-gray-200 pb-3">
                     <span className="font-medium text-gray-800">
                       Mã lịch hẹn:
@@ -635,51 +638,98 @@ const MyAppointments = () => {
                     </span>
                   </div>
 
-                  <div className="space-y-2.5 pb-4">
+                  {/* Khối thông tin chi tiết dịch vụ và đối soát thanh toán */}
+                  <div className="space-y-2.5 pb-4 border-b border-gray-100">
                     <div className="flex justify-between">
-                      <span>Bác sĩ khám:</span>
+                      <span className="text-gray-400">Bác sĩ khám:</span>
                       <span className="font-medium text-gray-900">
-                        {selectedInvoiceAppointment.docData.name}
+                        {selectedInvoiceAppointment.docData?.name}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Chuyên khoa:</span>
+                      <span className="text-gray-400">Chuyên khoa:</span>
                       <span className="text-gray-900">
                         {translateSpeciality(
-                          selectedInvoiceAppointment.docData.speciality,
+                          selectedInvoiceAppointment.docData?.speciality,
                         )}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Thời gian khám:</span>
-                      <span className="text-gray-900">
+                      <span className="text-gray-400">Thời gian khám:</span>
+                      <span className="text-gray-900 font-medium">
                         {selectedInvoiceAppointment.slotTime} -{" "}
                         {formatSlotDate(selectedInvoiceAppointment.slotDate)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Hình thức thanh toán:</span>
-                      <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
-                        Cổng Online (VNPay/Stripe)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Trạng thái đơn:</span>
-                      <span className="text-green-600 font-medium">
-                        ● Thành công
-                      </span>
+
+                    {/* Vạch chia nhẹ sang phần Cổng thanh toán điện tử */}
+                    <div className="my-2 border-t border-dashed border-gray-100 pt-2 space-y-2.5">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Hình thức:</span>
+                        <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600 border border-blue-100">
+                          Cổng Online (VNPay / Stripe)
+                        </span>
+                      </div>
+
+                      {/* THỜI GIAN THANH TOÁN THỰC TẾ (MỚI THÊM) */}
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">
+                          Thời gian thanh toán:
+                        </span>
+                        <span className="text-gray-900 font-medium">
+                          {
+                            selectedInvoiceAppointment.paidAt
+                              ? new Date(
+                                  selectedInvoiceAppointment.paidAt,
+                                ).toLocaleString("vi-VN")
+                              : new Date().toLocaleString(
+                                  "vi-VN",
+                                ) /* Dự phòng nếu DB không lưu paidAt */
+                          }
+                        </span>
+                      </div>
+
+                      {/* MÃ GIAO DỊCH ĐỐI TÁC (MỚI THÊM) */}
+                      {selectedInvoiceAppointment.vnpTransactionNo && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Mã GD đối tác:</span>
+                          <span className="font-mono text-gray-800 text-xs bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                            {selectedInvoiceAppointment.vnpTransactionNo}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* NGÂN HÀNG XỬ LÝ (MỚI THÊM) */}
+                      {selectedInvoiceAppointment.bankCode && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">
+                            Ngân hàng thanh toán:
+                          </span>
+                          <span className="font-semibold text-gray-700">
+                            {selectedInvoiceAppointment.bankCode}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Trạng thái đơn:</span>
+                        <span className="text-emerald-600 font-semibold inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Thành công
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   {/* Khối hiển thị số tiền thanh toán tổng */}
                   <div className="mt-4 rounded-xl bg-gray-50 p-4 flex justify-between items-center border border-gray-100">
-                    <span className="text-base font-semibold text-gray-800">
+                    <span className="text-base font-bold text-gray-800">
                       Tổng tiền chi trả:
                     </span>
-                    <span className="text-xl font-bold text-primary">
+                    <span className="text-xl font-black text-primary">
                       {Number(
                         selectedInvoiceAppointment.amount ||
-                          selectedInvoiceAppointment.docData.fees,
+                          selectedInvoiceAppointment.docData?.fees,
                       ).toLocaleString("vi-VN")}{" "}
                       đ
                     </span>
@@ -697,7 +747,7 @@ const MyAppointments = () => {
                       setShowInvoiceModal(false);
                       setSelectedInvoiceAppointment(null);
                     }}
-                    className="rounded-lg bg-gray-200 px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300"
+                    className="rounded-lg bg-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-300"
                   >
                     Đóng cửa sổ
                   </button>

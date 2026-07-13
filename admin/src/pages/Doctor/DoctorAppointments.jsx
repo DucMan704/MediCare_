@@ -141,6 +141,9 @@ const DoctorAppointments = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [sortOption, setSortOption] = useState("date_desc");
+  // Quản lý lịch hẹn đang được chọn để hiển thị hóa đơn trong popup
+  const [activeInvoice, setActiveInvoice] = useState(null);
+  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
   useEffect(() => {
     if (dToken) {
@@ -1176,8 +1179,12 @@ const DoctorAppointments = () => {
                         </span>
                       </div>
                       <p className="text-gray-600">
-                        {calculateAge(item.userData.dob)} tuổi
+                        {isNaN(calculateAge(item.userData.dob))
+                          ? "Chưa nhập"
+                          : `${calculateAge(item.userData.dob)} tuổi`}
                       </p>
+
+                      {/* CỘT THỜI GIAN KHÁM: Trả lại giao diện bình thường, không có hover ẩn/hiện */}
                       <div className="flex flex-col gap-0.5">
                         <p className="font-medium text-gray-800">
                           {item.slotTime}
@@ -1186,93 +1193,258 @@ const DoctorAppointments = () => {
                           {slotDateFormat(item.slotDate)}
                         </p>
                       </div>
+
                       <p className="font-semibold text-gray-900">
                         {Number(item.amount).toLocaleString()} {currency}
                       </p>
+
+                      {/* CỘT THAO TÁC: Hiện nút "Xem hóa đơn" xuất hiện mượt mà khi hover */}
                       <div
-                        className="flex items-center justify-end gap-2 text-right pr-2"
+                        className="relative flex items-center justify-end w-full pr-2 h-full"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {status === "pending" ? (
-                          <>
-                            <button
-                              onClick={() => cancelAppointment(item._id)}
-                              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50/50 transition"
+                        {/* 1. Trạng thái mặc định: Ẩn đi khi hover NẾU cuộc hẹn này đã thanh toán */}
+                        <div
+                          className={`flex items-center justify-end gap-2 transition-opacity duration-150 ${item.payment ? "group-hover:opacity-0 pointer-events-auto group-hover:pointer-events-none" : ""}`}
+                        >
+                          {status === "pending" ? (
+                            <>
+                              <button
+                                onClick={() => cancelAppointment(item._id)}
+                                className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50/50 transition"
+                              >
+                                Hủy
+                              </button>
+                              <button
+                                onClick={() => acceptAppointment(item._id)}
+                                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition"
+                              >
+                                Xác nhận
+                              </button>
+                            </>
+                          ) : (
+                            <span
+                              className={`text-xs font-semibold px-2.5 py-1 rounded-md min-w-[90px] text-center inline-block ${STATUS_BADGE[status]}`}
                             >
-                              Hủy
-                            </button>
+                              {STATUS_LABEL[status]}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 2. Trạng thái Hover: Hiện đè nút Xem hóa đơn lên trên */}
+                        {item.payment && (
+                          <div className="absolute right-2 inset-y-0 flex items-center justify-end hidden group-hover:flex animate-fadeIn">
                             <button
-                              onClick={() => acceptAppointment(item._id)}
-                              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition"
+                              onClick={(e) => {
+                                e.stopPropagation(); // Ngăn mở popup bệnh án của dòng
+                                setActiveInvoice(item);
+                                setIsInvoiceOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 text-white border border-indigo-600 hover:bg-indigo-700 hover:border-indigo-700 transition-all shadow-md whitespace-nowrap"
                             >
-                              Xác nhận
+                              📄 Xem hóa đơn
                             </button>
-                          </>
-                        ) : (
-                          <span
-                            className={`text-xs font-semibold px-2.5 py-1 rounded-md min-w-[90px] text-center inline-block ${STATUS_BADGE[status]}`}
-                          >
-                            {STATUS_LABEL[status]}
-                          </span>
+                          </div>
                         )}
                       </div>
-
-                      {/* ==================== BOX HÓA ĐƠN MINI KHI HOVER ==================== */}
-                      {item.payment && (
-                        <div className="absolute right-6 top-[85%] z-30 hidden group-hover:block w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 animate-fadeIn pointer-events-none text-left">
-                          {/* Khía răng cưa trang trí phía trên hóa đơn */}
-                          <div className="absolute -top-1.5 right-6 w-3 h-3 bg-white border-t border-l border-gray-100 rotate-45"></div>
-
-                          <div className="border-b border-dashed border-gray-200 pb-2 mb-2">
-                            <p className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">
-                              Mã cuộc hẹn
-                            </p>
-                            <p className="text-xs font-mono font-bold text-gray-700 truncate">
-                              {item._id}
-                            </p>
-                          </div>
-
-                          <div className="space-y-1.5 text-xs text-gray-500">
-                            <div className="flex justify-between">
-                              <span>Khách hàng:</span>
-                              <span className="font-medium text-gray-800">
-                                {item.userData.name}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Thời gian:</span>
-                              <span className="text-gray-700">
-                                {item.slotTime} -{" "}
-                                {slotDateFormat(item.slotDate)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Cổng thanh toán:</span>
-                              <span className="text-indigo-600 font-medium">
-                                VNPay / Stripe
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Trạng thái phiếu:</span>
-                              <span className="text-emerald-600 font-medium">
-                                ● Đã quyết toán
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center">
-                            <span className="text-xs font-semibold text-gray-700">
-                              Tổng cộng:
-                            </span>
-                            <span className="text-sm font-bold text-indigo-600">
-                              {Number(item.amount).toLocaleString()} {currency}
-                            </span>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })
+              )}
+
+              {/* ==================== POPUP MODAL CHÍNH GIỮA MÀN HÌNH (KHI CLICK) ==================== */}
+              {isInvoiceOpen && activeInvoice && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[3px] p-4 animate-fadeIn"
+                  onClick={() => {
+                    setIsInvoiceOpen(false);
+                    setActiveInvoice(null);
+                  }} // Click ra ngoài nền đen để đóng nhanh
+                >
+                  {/* Khung Hóa Đơn */}
+                  <div
+                    className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-left animate-scaleIn"
+                    onClick={(e) => e.stopPropagation()} // Chặn đóng khi click vào trong thân hóa đơn
+                  >
+                    {/* Header Hóa Đơn */}
+                    <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 p-5 text-white flex justify-between items-start">
+                      <div>
+                        <h3 className="text-lg font-bold uppercase tracking-wider">
+                          Hóa Đơn Điện Tử
+                        </h3>
+                        <p className="text-[11px] text-indigo-100 mt-0.5 font-mono">
+                          Số phiếu:{" "}
+                          {activeInvoice.invoiceNo ||
+                            `INV-${activeInvoice._id.slice(-8).toUpperCase()}`}
+                        </p>
+                      </div>
+
+                      {/* THANH CÔNG CỤ: IN, TẮT (X) */}
+                      <div className="flex items-center gap-1.5 bg-black/10 p-1 rounded-lg">
+                        {/* Nút Máy in */}
+                        <button
+                          onClick={() => window.print()}
+                          className="p-1.5 hover:bg-white/20 rounded transition text-white"
+                          title="In hóa đơn"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2.5}
+                            stroke="currentColor"
+                            className="w-4 h-4"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 1.144c.139.692-.367 1.356-1.071 1.356H7.182c-.704 0-1.21-.664-1.07-1.356L6.34 18m11.32 0h-11.32M9 4.5v3m3-3v3m3-3v3m-7.5 12h9"
+                            />
+                          </svg>
+                        </button>
+
+                        {/* Nút Tắt Đóng (X) */}
+                        <button
+                          onClick={() => {
+                            setIsInvoiceOpen(false);
+                            setActiveInvoice(null);
+                          }}
+                          className="p-1.5 bg-white/10 hover:bg-red-500 hover:text-white rounded transition text-white"
+                          title="Đóng cửa sổ"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={3}
+                            stroke="currentColor"
+                            className="w-4 h-4"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M6 18 18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Body Hóa Đơn */}
+                    <div className="p-6 text-sm text-gray-600 space-y-4">
+                      <div className="flex justify-between border-b border-dashed border-gray-200 pb-2">
+                        <span className="font-medium text-gray-400">
+                          Mã cuộc hẹn:
+                        </span>
+                        <span className="font-mono font-bold text-gray-800">
+                          {activeInvoice._id}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5 pb-2 border-b border-gray-100">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Tên bệnh nhân:</span>
+                          <span className="font-semibold text-gray-800">
+                            {activeInvoice.userData.name}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Tuổi:</span>
+                          <span className="text-gray-800 font-medium">
+                            {calculateAge(activeInvoice.userData.dob)} tuổi
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Thời gian khám:</span>
+                          <span className="text-gray-800 font-medium">
+                            {activeInvoice.slotTime} —{" "}
+                            {slotDateFormat(activeInvoice.slotDate)}
+                          </span>
+                        </div>
+
+                        {/* Khối chia chi tiết thông tin đối soát giao dịch trực tuyến (Mới nâng cấp) */}
+                        <div className="my-2 border-t border-dashed border-gray-100 pt-2 space-y-2.5">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Hình thức:</span>
+                            <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Thanh toán trực tuyến
+                            </span>
+                          </div>
+
+                          {/* THỜI GIAN THANH TOÁN THỰC TẾ */}
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">
+                              Thời gian nhận tiền:
+                            </span>
+                            <span className="text-gray-900 font-semibold">
+                              {activeInvoice.paidAt
+                                ? new Date(activeInvoice.paidAt).toLocaleString(
+                                    "vi-VN",
+                                  )
+                                : new Date().toLocaleString("vi-VN")}
+                            </span>
+                          </div>
+
+                          {/* MÃ ĐỐI SOÁT GIAO DỊCH NGÂN HÀNG */}
+                          {activeInvoice.vnpTransactionNo && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">
+                                Mã giao dịch ngân hàng:
+                              </span>
+                              <span className="font-mono text-gray-800 text-xs bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                {activeInvoice.vnpTransactionNo}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* KÊNH THANH TOÁN (Ví dụ: NCB, Vietcombank, Visa...) */}
+                          {activeInvoice.bankCode && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Kênh xử lý:</span>
+                              <span className="font-bold text-gray-700">
+                                {activeInvoice.bankCode}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">
+                              Trạng thái phiếu:
+                            </span>
+                            <span className="text-emerald-600 font-bold inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              Đã hoàn tất quyết toán
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tổng tiền */}
+                      <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
+                        <span className="text-base font-bold text-gray-800">
+                          Tổng thu nhập cuộc hẹn:
+                        </span>
+                        <span className="text-xl font-black text-indigo-600">
+                          {Number(activeInvoice.amount).toLocaleString()}{" "}
+                          {currency}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer Đóng dưới đáy */}
+                    <div className="border-t border-gray-50 bg-gray-50/50 px-6 py-3 flex justify-end">
+                      <button
+                        onClick={() => {
+                          setIsInvoiceOpen(false);
+                          setActiveInvoice(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-gray-100 text-xs font-semibold text-gray-600 hover:bg-gray-200 hover:text-gray-800 transition"
+                      >
+                        Đóng lại
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
