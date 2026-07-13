@@ -95,7 +95,7 @@ export const checkPaymentVNPay = async (req, res) => {
     }
 
     // 3. Kiểm tra các lỗi thanh toán khác từ đối tác ngân hàng (Mã khác 00)
-    if (!verify.isSuccess) {
+    if (queryData.vnp_ResponseCode !== "00") {
       return res.status(200).json({
         success: false,
         message: "Thanh toán thất bại hoặc có lỗi xảy ra từ ngân hàng.",
@@ -114,12 +114,11 @@ export const checkPaymentVNPay = async (req, res) => {
       return res.status(200).json({
         success: true,
         message: "Thanh toán thành công (Hóa đơn đã được xử lý trước đó).",
-        data: existingInvoice,
+        invoice: existingInvoice,
       });
     }
 
     // 4.2. Cập nhật trạng thái thanh toán của cuộc hẹn trong database thành TRUE
-    // Đồng thời populate thông tin user và doctor để lấy thông tin viết hóa đơn
     const updatedAppointment = await appointmentModel.findByIdAndUpdate(
       appointmentId,
       { payment: true },
@@ -136,16 +135,29 @@ export const checkPaymentVNPay = async (req, res) => {
     // 4.3. Tiến hành tạo Hóa đơn chuẩn đầy đủ thông tin
     const invoiceNo = `INV-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`; // Tạo mã hóa đơn độc nhất
 
+    // Ép kiểu số tiền về đúng chuẩn VND (Chia cho 100)
+    const realAmount = Number(queryData.vnp_Amount) / 100;
+
     const newInvoice = await invoiceModel.create({
       invoiceNo: invoiceNo,
       appointmentId: updatedAppointment._id,
-      userId: updatedAppointment.userId, // Giả định trường này lưu ID của Người dùng trong appointmentModel
-      doctorId: updatedAppointment.doctorId, // Giả định trường này lưu ID của Bác sĩ trong appointmentModel
-      amount: queryData.vnp_Amount,
+
+      // FIX LỖI 500: Lấy linh hoạt theo các kiểu đặt tên biến thông dụng trong Model lịch hẹn của bạn
+      userId: updatedAppointment.userId || updatedAppointment.user || null,
+      doctorId:
+        updatedAppointment.doctorId ||
+        updatedAppointment.docId ||
+        updatedAppointment.docData?._id ||
+        null,
+
+      amount: realAmount,
       paymentMethod: "VNPay",
       bankCode: queryData.vnp_BankCode,
       vnpTransactionNo: queryData.vnp_TransactionNo,
-      orderInfo: queryData.vnp_OrderInfo,
+      orderInfo: decodeURIComponent(queryData.vnp_OrderInfo || "").replace(
+        /\+/g,
+        " ",
+      ), // Giải mã tiếng Việt có dấu từ VNPay gửi về
       status: "paid",
       paidAt: new Date(),
     });
@@ -157,9 +169,14 @@ export const checkPaymentVNPay = async (req, res) => {
       invoice: newInvoice,
     });
   } catch (error) {
-    console.error("Verify VNPay Return Error:", error);
+    // In chi tiết nguyên nhân sập ra console terminal để theo dõi trực tiếp
+    console.error("Verify VNPay Return Error Detail:", error.message);
     return res
       .status(500)
-      .json({ success: false, message: "Internal Server Error" });
+      .json({
+        success: false,
+        message: "Internal Server Error",
+        error: error.message,
+      });
   }
 };
