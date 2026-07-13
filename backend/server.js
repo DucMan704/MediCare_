@@ -56,7 +56,7 @@ const corsOptions = {
 
 // --- MIDDLEWARES ---
 // Đặt trust proxy để Express nhận biết được IP thật của client khi deploy trên các dịch vụ như Render, Heroku, Vercel
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 // Khai báo CORS đầu tiên để nó bảo vệ toàn bộ route bên dưới
 app.use(cors(corsOptions));
