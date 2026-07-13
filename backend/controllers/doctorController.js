@@ -247,8 +247,11 @@ const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Lấy IP và thông tin thiết bị của request hiện tại
-    const ipAddress = req.ip || req.headers["x-forwarded-for"];
+    let ipAddress =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress ||
+      req.ip;
+
     const userAgent = req.headers["user-agent"];
 
     // Kiểm tra dữ liệu đầu vào
