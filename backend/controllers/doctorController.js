@@ -702,88 +702,43 @@ const appointmentComplete = async (req, res) => {
   }
 };
 
+// API to cancel appointment for doctor panel
 const appointmentCancel = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const docId = req.doctor._id;
     const { appointmentId } = req.body;
 
-    //  Kiểm tra lịch khám
-    const appointment = await appointmentModel
-      .findById(appointmentId)
-      .session(session);
+    const appointmentData = await appointmentModel.findById(appointmentId);
 
-    if (!appointment) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "Appointment not found",
+    if (
+      appointmentData &&
+      appointmentData.docId.toString() === docId.toString() &&
+      !appointmentData.cancelled &&
+      !appointmentData.isCompleted
+    ) {
+      await appointmentModel.findByIdAndUpdate(appointmentId, {
+        cancelled: true,
       });
-    }
 
-    //  Kiểm tra bác sĩ có quyền hủy k
-    if (appointment.docId !== docId) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized action",
-      });
-    }
-
-    //  Đã hủy rồi
-    if (appointment.cancelled) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Appointment already cancelled",
-      });
-    }
-
-    // cuộc hẹn đã hoàn thành thì không được hủy
-    if (appointment.isCompleted) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Completed appointment cannot be cancelled",
-      });
-    }
-
-    appointment.cancelled = true;
-    await appointment.save({ session });
-
-    // xóa slot đã hẹn
-    await doctorModel.findByIdAndUpdate(
-      docId,
-      {
+      // Xóa slot đã hẹn
+      await doctorModel.findByIdAndUpdate(docId, {
         $pull: {
-          [`slots_booked.${appointment.slotDate}`]: appointment.slotTime,
+          [`slots_booked.${appointmentData.slotDate}`]:
+            appointmentData.slotTime,
         },
-      },
-      { session },
-    );
+      });
 
-    await session.commitTransaction();
-    session.endSession();
+      return res
+        .status(200)
+        .json({ success: true, message: "Appointment Cancelled" });
+    }
 
-    return res.json({
-      success: true,
-      message: "Appointment cancelled successfully",
-    });
+    return res
+      .status(404)
+      .json({ success: false, message: "Appointment Not Found" });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.log(error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
