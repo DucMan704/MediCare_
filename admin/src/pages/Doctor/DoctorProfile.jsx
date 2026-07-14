@@ -368,7 +368,7 @@ const DoctorProfile = () => {
                 Phí khám
               </p>
               <p className="text-sm font-semibold text-[#1F2A27]">
-                {currency} {profileData.fees}
+                {profileData.fees} {currency}
               </p>
             </div>
           </div>

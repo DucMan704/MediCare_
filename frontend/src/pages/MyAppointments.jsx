@@ -78,21 +78,10 @@ const SORT_OPTIONS = [
 const MyAppointments = () => {
   const { backendUrl, token } = useContext(AppContext);
 
-  const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID?.trim();
   const currencySymbol = import.meta.env.VITE_CURRENCY?.trim() || "đ";
-  const isRazorpayConfigured =
-    razorpayKeyId && !razorpayKeyId.includes("Razorpay Key Id here");
 
   const [appointments, setAppointments] = useState([]);
   const [payment, setPayment] = useState("");
-  const [stripeModalOpen, setStripeModalOpen] = useState(false);
-  const [stripeAppointmentId, setStripeAppointmentId] = useState("");
-  const [stripeForm, setStripeForm] = useState({
-    cardholderName: "",
-    cardNumber: "",
-    expiryMonth: "",
-    expiryYear: "",
-  });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -101,10 +90,6 @@ const MyAppointments = () => {
   const [selectedInvoiceAppointment, setSelectedInvoiceAppointment] =
     useState(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-
-  const selectedStripeAppointment = appointments.find(
-    (appointment) => appointment._id === stripeAppointmentId,
-  );
 
   const getUserAppointments = async () => {
     try {
@@ -163,119 +148,6 @@ const MyAppointments = () => {
       );
     }
   };
-
-  // ==========================================
-  // HÀM KHÁC (RAZORPAY & STRIPE GIỮ NGUYÊN)
-  // ==========================================
-  const initPay = (order) => {
-    if (!isRazorpayConfigured) {
-      toast.error("Razorpay is not configured");
-      return;
-    }
-    const options = {
-      key: razorpayKeyId,
-      amount: order.amount,
-      currency: order.currency,
-      name: "Thanh toán lịch khám",
-      description: "Thanh toán lịch khám",
-      order_id: order.id,
-      receipt: order.receipt,
-      handler: async (response) => {
-        try {
-          const { data } = await axios.post(
-            backendUrl + "/api/user/verifyRazorpay",
-            response,
-            { headers: { token } },
-          );
-          if (data.success) {
-            getUserAppointments();
-          }
-        } catch (error) {
-          toast.error(error.message);
-        }
-      },
-    };
-    const rzp = new window.Razorpay(options);
-    rzp.open();
-  };
-
-  const appointmentRazorpay = async (appointmentId) => {
-    try {
-      const { data } = await axios.post(
-        backendUrl + "/api/user/payment-razorpay",
-        { appointmentId },
-        { headers: { token } },
-      );
-      if (data.success) {
-        initPay(data.order);
-      } else {
-        toast.error(data.message);
-      }
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  const openStripeModal = (appointmentId) => {
-    setStripeAppointmentId(appointmentId);
-    setStripeForm({
-      cardholderName: "",
-      cardNumber: "",
-      expiryMonth: "",
-      expiryYear: "",
-    });
-    setStripeModalOpen(true);
-  };
-
-  const closeStripeModal = () => {
-    setStripeModalOpen(false);
-    setStripeAppointmentId("");
-  };
-
-  const handleStripeFieldChange = (event) => {
-    const { name, value } = event.target;
-    setStripeForm((current) => ({ ...current, [name]: value }));
-  };
-
-  const appointmentStripe = (appointmentId) => {
-    openStripeModal(appointmentId);
-  };
-
-  const confirmStripePayment = async (event) => {
-    event.preventDefault();
-    if (
-      !stripeForm.cardholderName.trim() ||
-      !stripeForm.cardNumber.trim() ||
-      !stripeForm.expiryMonth.trim() ||
-      !stripeForm.expiryYear.trim()
-    ) {
-      toast.error("Vui lòng nhập đầy đủ thông tin thanh toán");
-      return;
-    }
-
-    try {
-      const { data } = await axios.post(
-        backendUrl + "/api/user/verifyStripe",
-        { appointmentId: stripeAppointmentId, success: "true" },
-        { headers: { token } },
-      );
-      if (data.success) {
-        toast.success(data.message || "Payment Successful");
-        closeStripeModal();
-        getUserAppointments();
-      } else {
-        toast.error(data.message);
-      }
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  useEffect(() => {
-    if (token) {
-      getUserAppointments();
-    }
-  }, [token]);
 
   const visibleAppointments = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -528,17 +400,6 @@ const MyAppointments = () => {
                                   alt="VNPay"
                                 />
                               </button>
-
-                              <button
-                                onClick={() => appointmentStripe(item._id)}
-                                className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-gray-50"
-                              >
-                                <img
-                                  className="max-h-5 max-w-20"
-                                  src={assets.stripe_logo}
-                                  alt="Stripe"
-                                />
-                              </button>
                             </div>
                           )}
 
@@ -775,62 +636,6 @@ const MyAppointments = () => {
           </div>
         </div>
       </aside>
-
-      {/* STRIPE MODAL GIỮ NGUYÊN */}
-      {stripeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
-          <div className="w-full max-w-[650px] overflow-hidden border border-gray-300 bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="relative overflow-hidden bg-[#002d72] px-6 py-5 text-white sm:px-8">
-              <p className="text-[24px] font-bold uppercase tracking-wide">
-                NAPAS PAYMENT GATEWAY
-              </p>
-            </div>
-            <div className="px-6 py-5 sm:px-8">
-              <form onSubmit={confirmStripePayment} className="space-y-5">
-                <div className="grid grid-cols-[190px_1fr] items-center gap-4">
-                  <label className="text-right text-sm font-medium text-[#4b5563]">
-                    Tên chủ thẻ :::
-                  </label>
-                  <input
-                    name="cardholderName"
-                    value={stripeForm.cardholderName}
-                    onChange={handleStripeFieldChange}
-                    type="text"
-                    className="h-11 w-full border border-[#b9d4ff] bg-[#f5f7fb] px-4 text-sm outline-none"
-                  />
-                </div>
-                <div className="grid grid-cols-[190px_1fr] items-center gap-4">
-                  <label className="text-right text-sm font-medium text-[#4b5563]">
-                    Số thẻ :::
-                  </label>
-                  <input
-                    name="cardNumber"
-                    value={stripeForm.cardNumber}
-                    onChange={handleStripeFieldChange}
-                    type="text"
-                    className="h-11 w-full border border-[#1d4ed8] bg-[#f5f7fb] px-4 text-sm outline-none"
-                  />
-                </div>
-                <div className="flex justify-end gap-3 pt-3">
-                  <button
-                    type="submit"
-                    className="min-w-32 rounded-md bg-[#1d4ed8] px-6 py-2.5 text-sm font-medium text-white"
-                  >
-                    Thanh toán
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeStripeModal}
-                    className="min-w-32 rounded-md bg-[#e5e7eb] px-6 py-2.5 text-sm text-[#374151]"
-                  >
-                    Huỷ
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

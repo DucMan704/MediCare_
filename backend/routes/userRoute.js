@@ -10,10 +10,6 @@ import {
   bookAppointment,
   listAppointment,
   cancelAppointment,
-  paymentRazorpay,
-  verifyRazorpay,
-  paymentStripe,
-  verifyStripe,
   getMedicalRecords,
   reviewDoctor,
 } from "../controllers/userController.js";
@@ -41,10 +37,6 @@ userRouter.post(
 userRouter.post("/book-appointment", authUser, bookAppointment);
 userRouter.get("/appointments", authUser, listAppointment);
 userRouter.post("/cancel-appointment", authUser, cancelAppointment);
-userRouter.post("/payment-razorpay", authUser, paymentRazorpay);
-userRouter.post("/verifyRazorpay", authUser, verifyRazorpay);
-userRouter.post("/payment-stripe", authUser, paymentStripe);
-userRouter.post("/verifyStripe", authUser, verifyStripe);
 userRouter.get("/medical-records/:userId", authUser, getMedicalRecords);
 userRouter.post("/add-review", authUser, reviewDoctor);
 
