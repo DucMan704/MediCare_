@@ -149,6 +149,12 @@ const MyAppointments = () => {
     }
   };
 
+  useEffect(() => {
+    if (token) {
+      getUserAppointments();
+    }
+  }, [token]);
+
   const visibleAppointments = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     let list = appointments.filter((item) => {
@@ -400,6 +406,19 @@ const MyAppointments = () => {
                                   alt="VNPay"
                                 />
                               </button>
+                              <button
+                                onClick={() => appointmentVNPay(item._id)}
+                                className="flex items-center justify-center rounded-lg border py-2 bg-white transition-all duration-300 hover:bg-blue-50 hover:border-blue-300"
+                              >
+                                <img
+                                  className="max-h-5 object-contain"
+                                  src={
+                                    assets.MoMo_Logo ||
+                                    "https://sandbox.vnpayment.vn/paymentv2/Images/brands/logo-vnpay.svg"
+                                  }
+                                  alt="VNPay"
+                                />
+                              </button>
                             </div>
                           )}
 
@@ -528,7 +547,7 @@ const MyAppointments = () => {
                       <div className="flex justify-between">
                         <span className="text-gray-400">Hình thức:</span>
                         <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600 border border-blue-100">
-                          Cổng Online (VNPay / Stripe)
+                          Cổng Online (VNPay)
                         </span>
                       </div>
 
