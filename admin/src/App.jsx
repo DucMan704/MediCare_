@@ -12,6 +12,7 @@ import AddDoctor from "./pages/Admin/AddDoctor";
 import DoctorsList from "./pages/Admin/DoctorsList";
 import Login from "./pages/Login";
 import DoctorAppointments from "./pages/Doctor/DoctorAppointments";
+import Security from "./pages/Doctor/DoctorSecurity";
 import DoctorDashboard from "./pages/Doctor/DoctorDashboard";
 import DoctorProfile from "./pages/Doctor/DoctorProfile";
 import EditDoctor from "./pages/Admin/EditDoctor";
@@ -40,6 +41,7 @@ const App = () => {
           <Route path="/doctor-profile" element={<DoctorProfile />} />
           <Route path="/edit-doctor/:doctorId" element={<EditDoctor />} />
           <Route path="/patients-list" element={<PatientsList />} />
+          <Route path="/doctor-security" element={<Security />} />
         </Routes>
       </div>
     </div>

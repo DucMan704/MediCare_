@@ -16,24 +16,44 @@ import { Star, MessageCircle, Loader2, Send, UserRound } from "lucide-react";
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-// Renders 5 stars with a partial fill based on `value` (0–5, decimals ok).
+// Renders 5 stars với việc đổ màu chính xác cho từng ngôi sao riêng biệt
 const StarRating = ({ value = 0, size = 16 }) => {
-  const percent = (Math.max(0, Math.min(5, value)) / 5) * 100;
+  // Đảm bảo giá trị luôn nằm trong khoảng từ 0 đến 5
+  const validatedValue = Math.max(0, Math.min(5, value));
+
   return (
-    <div className="relative inline-flex leading-none">
-      <div className="flex gap-0.5 text-gray-200">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Star key={i} size={size} fill="currentColor" stroke="none" />
-        ))}
-      </div>
-      <div
-        className="absolute inset-0 flex gap-0.5 overflow-hidden text-amber-400"
-        style={{ width: `${percent}%` }}
-      >
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Star key={i} size={size} fill="currentColor" stroke="none" />
-        ))}
-      </div>
+    <div className="flex gap-0.5 leading-none text-gray-200">
+      {Array.from({ length: 5 }).map((_, i) => {
+        // Tính toán mức độ "đầy" của ngôi sao hiện tại (từ i đến i+1)
+        // Ví dụ value = 4.5: các sao 0,1,2,3 sẽ có activeWidth = 100%, sao thứ 4 (ngôi sao thứ 5) sẽ là 50%
+        const activeWidth = Math.max(0, Math.min(1, validatedValue - i)) * 100;
+
+        return (
+          <div
+            key={i}
+            className="relative inline-block"
+            style={{ width: size, height: size }}
+          >
+            {/* Lớp nền màu xám (Sao trống) */}
+            <Star size={size} fill="currentColor" stroke="none" />
+
+            {/* Lớp phủ màu vàng (Sao đầy / đầy một phần) */}
+            {activeWidth > 0 && (
+              <div
+                className="absolute top-0 left-0 h-full overflow-hidden text-amber-400"
+                style={{ width: `${activeWidth}%` }}
+              >
+                {/* Ép ngôi sao vàng luôn có kích thước chuẩn bằng 'size', 
+                  không bị bóp méo khi thẻ div cha bị overflow-hidden cắt bớt chiều rộng
+                */}
+                <div style={{ width: size, height: size }}>
+                  <Star size={size} fill="currentColor" stroke="none" />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -484,7 +504,7 @@ const Appointment = () => {
             <div className="flex-1 space-y-1.5">
               {distribution.map((row) => (
                 <div key={row.star} className="flex items-center gap-2">
-                  <span className="w-8 text-xs text-gray-500">
+                  <span className="w-9 text-xs text-gray-500">
                     {row.star} sao
                   </span>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">

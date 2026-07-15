@@ -8,6 +8,7 @@ import {
 } from "vnpay";
 import vnpay from "../config/vnpay.js";
 import "dotenv/config";
+import invoiceModel from "../models/invoiceModel.js";
 
 import { findDoctorFeeByAppointmentId } from "./userController.js";
 import appointmentModel from "../models/appointmentModel.js";
@@ -94,7 +95,7 @@ export const checkPaymentVNPay = async (req, res) => {
     }
 
     // 3. Kiểm tra các lỗi thanh toán khác từ đối tác ngân hàng (Mã khác 00)
-    if (!verify.isSuccess) {
+    if (queryData.vnp_ResponseCode !== "00") {
       return res.status(200).json({
         success: false,
         message: "Thanh toán thất bại hoặc có lỗi xảy ra từ ngân hàng.",
@@ -104,27 +105,78 @@ export const checkPaymentVNPay = async (req, res) => {
     // 4. XỬ LÝ KHI THANH TOÁN THÀNH CÔNG (Mã vnp_ResponseCode === "00")
     const txnRef = queryData.vnp_TxnRef;
     const appointmentId = txnRef.split("_")[0]; // Tách chuỗi lấy lại appointmentId ban đầu
-    // Cập nhật trạng thái thanh toán của cuộc hẹn trong database thành TRUE
+
+    // 4.1. Kiểm tra xem hóa đơn này đã từng được tạo chưa (Tránh trùng lặp do user F5 trang web)
+    const existingInvoice = await invoiceModel.findOne({
+      vnpTransactionNo: queryData.vnp_TransactionNo,
+    });
+    if (existingInvoice) {
+      return res.status(200).json({
+        success: true,
+        message: "Thanh toán thành công (Hóa đơn đã được xử lý trước đó).",
+        invoice: existingInvoice,
+      });
+    }
+
+    // 4.2. Cập nhật trạng thái thanh toán của cuộc hẹn trong database thành TRUE
     const updatedAppointment = await appointmentModel.findByIdAndUpdate(
       appointmentId,
       { payment: true },
       { new: true },
     );
+
     if (!updatedAppointment) {
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy lịch hẹn tương ứng để cập nhật dữ liệu",
       });
     }
+
+    // 4.3. Tiến hành tạo Hóa đơn chuẩn đầy đủ thông tin
+    const invoiceNo = `INV-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`; // Tạo mã hóa đơn độc nhất
+
+    // Ép kiểu số tiền về đúng chuẩn VND (Chia cho 100)
+    const realAmount = Number(queryData.vnp_Amount) / 100;
+
+    const newInvoice = await invoiceModel.create({
+      invoiceNo: invoiceNo,
+      appointmentId: updatedAppointment._id,
+
+      // FIX LỖI 500: Lấy linh hoạt theo các kiểu đặt tên biến thông dụng trong Model lịch hẹn của bạn
+      userId: updatedAppointment.userId || updatedAppointment.user || null,
+      doctorId:
+        updatedAppointment.doctorId ||
+        updatedAppointment.docId ||
+        updatedAppointment.docData?._id ||
+        null,
+
+      amount: realAmount,
+      paymentMethod: "VNPay",
+      bankCode: queryData.vnp_BankCode,
+      vnpTransactionNo: queryData.vnp_TransactionNo,
+      orderInfo: decodeURIComponent(queryData.vnp_OrderInfo || "").replace(
+        /\+/g,
+        " ",
+      ), // Giải mã tiếng Việt có dấu từ VNPay gửi về
+      status: "paid",
+      paidAt: new Date(),
+    });
+
+    // 5. Trả kết quả kèm thông tin hóa đơn chi tiết về cho Frontend hiển thị
     return res.status(200).json({
       success: true,
-      message: "Thanh toán thành công và đã cập nhật lịch hẹn!",
-      data: verify,
+      message: "Thanh toán thành công và đã khởi tạo hóa đơn thành công!",
+      invoice: newInvoice,
     });
   } catch (error) {
-    console.error("Verify VNPay Return Error:", error);
+    // In chi tiết nguyên nhân sập ra console terminal để theo dõi trực tiếp
+    console.error("Verify VNPay Return Error Detail:", error.message);
     return res
       .status(500)
-      .json({ success: false, message: "Internal Server Error" });
+      .json({
+        success: false,
+        message: "Internal Server Error",
+        error: error.message,
+      });
   }
 };

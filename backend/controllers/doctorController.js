@@ -5,12 +5,130 @@ import appointmentModel from "../models/appointmentModel.js";
 import scheduleModel from "../models/scheduleModel.js";
 import Review from "../models/reviewModel.js";
 import Session from "../models/sessionModel.js";
+import SecurityLog from "../models/securityLog.js";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
 // Cấu hình thời gian sống của Token
 const ACCESS_TOKEN_TTL = "30m"; // Đồng bộ hóa xuống jwt.sign ở dưới
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
+
+export const getSecurityLogs = async (req, res) => {
+  try {
+    const doctorId = req.doctor.id; // Lấy từ Middleware xác thực token authDoctor
+
+    // Lấy tham số phân trang từ query string (mặc định trang 1, mỗi trang 10 dòng)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // 1. Truy vấn DB: Lọc theo doctorId, sắp xếp mới nhất trước, áp dụng phân trang
+    const logs = await SecurityLog.find({ doctorId })
+      .sort({ createdAt: -1 }) // Mới nhất lên đầu
+      .skip(skip)
+      .limit(limit)
+      .select("action status ipAddress createdAt"); // Chỉ lấy các trường cần thiết cho FE
+
+    // 2. Đếm tổng số bản ghi để Frontend làm tính năng chuyển trang (nếu cần)
+    const totalLogs = await SecurityLog.countDocuments({ doctorId });
+
+    return res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: {
+        totalItems: totalLogs,
+        currentPage: page,
+        totalPages: Math.ceil(totalLogs / limit),
+        limit: limit,
+      },
+    });
+  } catch (error) {
+    console.error("Lỗi Get Security Logs API:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi hệ thống, không thể tải nhật ký bảo mật.",
+    });
+  }
+};
+
+// @desc    Thay đổi mật khẩu bác sĩ
+// @route   PUT /api/doctor/change-password
+// @access  Private (Chỉ bác sĩ đã đăng nhập)
+export const changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const doctorId = req.doctor.id; // Lấy từ Middleware xác thực token authDoctor
+
+    // 1. Kiểm tra dữ liệu đầu vào
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ mật khẩu cũ và mới.",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu mới phải có tối thiểu 8 ký tự.",
+      });
+    }
+
+    // 2. Tìm bác sĩ trong Database
+    const doctor = await doctorModel.findById(doctorId);
+    if (!doctor) {
+      return res
+        .status(444)
+        .json({ success: false, message: "Không tìm thấy thông tin bác sĩ." });
+    }
+
+    // 3. Đối chiếu mật khẩu cũ người dùng nhập với mật khẩu đã mã hóa trong DB
+    const isMatch = await bcrypt.compare(oldPassword, doctor.password);
+
+    if (!isMatch) {
+      // 🟢 GHI LOG THẤT BẠI: Nếu nhập sai mật khẩu cũ
+      await SecurityLog.create({
+        doctorId,
+        action: "Thay đổi mật khẩu",
+        status: "Thất bại",
+        ipAddress: req.ip || req.headers["x-forwarded-for"],
+        userAgent: req.headers["user-agent"],
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Mật khẩu hiện tại không chính xác.",
+      });
+    }
+
+    // 4. Tiến hành mã hóa mật khẩu mới
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // 5. Cập nhật mật khẩu mới vào Database
+    doctor.password = hashedPassword;
+    await doctor.save();
+
+    // 🟢 GHI LOG THÀNH CÔNG: Lưu vết hoạt động thành công vào DB
+    await SecurityLog.create({
+      doctorId,
+      action: "Thay đổi mật khẩu",
+      status: "Thành công",
+      ipAddress: req.ip || req.headers["x-forwarded-for"],
+      userAgent: req.headers["user-agent"],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Thay đổi mật khẩu thành công. Hồ sơ của bạn đã được bảo vệ.",
+    });
+  } catch (error) {
+    console.error("Lỗi Change Password API:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Lỗi hệ thống, vui lòng thử lại sau." });
+  }
+};
 
 export const refreshToken = async (req, res) => {
   try {
@@ -129,6 +247,13 @@ const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    let ipAddress =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress ||
+      req.ip;
+
+    const userAgent = req.headers["user-agent"];
+
     // Kiểm tra dữ liệu đầu vào
     if (!email || !password) {
       return res.status(400).json({
@@ -144,6 +269,7 @@ const loginDoctor = async (req, res) => {
     const doctor = await doctorModel.findOne({ email: normalizedEmail });
 
     if (!doctor) {
+      // 🛑 KHÔNG CÓ USER: Không cần ghi log bảo mật vì email này không tồn tại trong hệ thống của bạn (tránh rác DB)
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
@@ -154,6 +280,15 @@ const loginDoctor = async (req, res) => {
     const isMatch = await bcrypt.compare(password, doctor.password);
 
     if (!isMatch) {
+      // 🛑 GHI LOG THẤT BẠI: Mật khẩu sai (Tài khoản có tồn tại nhưng nhập sai)
+      await SecurityLog.create({
+        doctorId: doctor._id,
+        action: "Đăng nhập hệ thống",
+        status: "Thất bại",
+        ipAddress,
+        userAgent,
+      });
+
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
@@ -165,16 +300,28 @@ const loginDoctor = async (req, res) => {
       expiresIn: ACCESS_TOKEN_TTL,
     });
 
-    // tạo refresh token
+    // Tạo refresh token
     const refreshToken = crypto.randomBytes(64).toString("hex");
 
-    //lưu refresh token vào database
+    // 🌟 BỔ SUNG TẠI ĐÂY: Lưu thêm ipAddress và userAgent vào Session để phục vụ chức năng "Thiết bị đang hoạt động"
     await Session.create({
       ownerId: doctor._id,
       ownerType: "Doctor",
       refreshToken,
+      ipAddress, // Thêm trường này vào Schema Session của bạn nếu chưa có
+      userAgent, // Thêm trường này vào Schema Session của bạn nếu chưa có
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL), // 7 ngày
     });
+
+    // 🌟 BỔ SUNG TẠI ĐÂY: Ghi log Đăng nhập THÀNH CÔNG
+    await SecurityLog.create({
+      doctorId: doctor._id,
+      action: "Đăng nhập hệ thống",
+      status: "Thành công",
+      ipAddress,
+      userAgent,
+    });
+
     // Trả refreshtoken về trong cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -360,15 +507,16 @@ const doctorDashboard = async (req, res) => {
 const updateAvailability = async (req, res) => {
   try {
     const docId = req.doctor._id;
-    const { workDate, slots } = req.body;
+    const { workDate, slots } = req.body; // workDate lúc này là chuỗi dạng "YYYY-MM-DD"
 
     if (!workDate || !Array.isArray(slots) || slots.length === 0) {
       return res.json({ success: false, message: "Dữ liệu không hợp lệ" });
     }
 
-    // Chuẩn hóa ngày về 00:00:00 để tránh lệch giờ khi so sánh/lưu
-    const normalizedDate = new Date(workDate);
-    normalizedDate.setHours(0, 0, 0, 0);
+    // 🌟 CHỈNH SỬA TẠI ĐÂY: Bóc tách chuỗi YYYY-MM-DD và chuẩn hóa về 00:00:00 UTC
+    // Điều này giúp tránh việc Node.js tự áp múi giờ local gây lệch ngày thành ngày hôm trước/sau
+    const [year, month, day] = workDate.split("-").map(Number);
+    const normalizedDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
 
     // Không cho phép sửa các slot đã có bệnh nhân đặt (isBooked = true)
     const bookedSlots = await scheduleModel
@@ -454,17 +602,24 @@ const getDoctorSlots = async (req, res) => {
     const { docId } = req.params;
     const days = parseInt(req.query.days) || 7;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 🌟 CHỈNH SỬA 1: Tạo ngày hôm nay theo chuẩn UTC để đồng bộ với Database
+    const now = new Date();
+    const today = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0),
+    );
 
+    // Tính toán ngày kết thúc theo chuẩn UTC
     const endDate = new Date(today);
-    endDate.setDate(endDate.getDate() + days - 1);
-    endDate.setHours(23, 59, 59, 999);
+    endDate.setUTCDate(endDate.getUTCDate() + days - 1);
+    endDate.setUTCHours(23, 59, 59, 999);
 
+    // 🌟 CHỈNH SỬA 2: Lọc dữ liệu chuẩn xác
     const schedules = await scheduleModel
       .find({
         doctorId: docId,
         workDate: { $gte: today, $lte: endDate },
+        available: true, // CHỐNG LỖI XÓA LỊCH: Chỉ lấy những khung giờ bác sĩ đang "Mở"
+        isBooked: false, // TỐI ƯU THÊM: Chỉ lấy những ca chưa có bệnh nhân nào đặt trước
       })
       .select("workDate timeSlot available isBooked")
       .sort({ workDate: 1, timeSlot: 1 });
@@ -547,88 +702,43 @@ const appointmentComplete = async (req, res) => {
   }
 };
 
+// API to cancel appointment for doctor panel
 const appointmentCancel = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const docId = req.doctor._id;
     const { appointmentId } = req.body;
 
-    //  Kiểm tra lịch khám
-    const appointment = await appointmentModel
-      .findById(appointmentId)
-      .session(session);
+    const appointmentData = await appointmentModel.findById(appointmentId);
 
-    if (!appointment) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "Appointment not found",
+    if (
+      appointmentData &&
+      appointmentData.docId.toString() === docId.toString() &&
+      !appointmentData.cancelled &&
+      !appointmentData.isCompleted
+    ) {
+      await appointmentModel.findByIdAndUpdate(appointmentId, {
+        cancelled: true,
       });
-    }
 
-    //  Kiểm tra bác sĩ có quyền hủy k
-    if (appointment.docId !== docId) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized action",
-      });
-    }
-
-    //  Đã hủy rồi
-    if (appointment.cancelled) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Appointment already cancelled",
-      });
-    }
-
-    // cuộc hẹn đã hoàn thành thì không được hủy
-    if (appointment.isCompleted) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Completed appointment cannot be cancelled",
-      });
-    }
-
-    appointment.cancelled = true;
-    await appointment.save({ session });
-
-    // xóa slot đã hẹn
-    await doctorModel.findByIdAndUpdate(
-      docId,
-      {
+      // Xóa slot đã hẹn
+      await doctorModel.findByIdAndUpdate(docId, {
         $pull: {
-          [`slots_booked.${appointment.slotDate}`]: appointment.slotTime,
+          [`slots_booked.${appointmentData.slotDate}`]:
+            appointmentData.slotTime,
         },
-      },
-      { session },
-    );
+      });
 
-    await session.commitTransaction();
-    session.endSession();
+      return res
+        .status(200)
+        .json({ success: true, message: "Appointment Cancelled" });
+    }
 
-    return res.json({
-      success: true,
-      message: "Appointment cancelled successfully",
-    });
+    return res
+      .status(404)
+      .json({ success: false, message: "Appointment Not Found" });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.log(error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

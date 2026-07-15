@@ -237,9 +237,18 @@ const DoctorAvailability = () => {
             : false,
       }));
 
+      // 🌟 SỬA TẠI ĐÂY: Format selectedDate thành chuỗi "YYYY-MM-DD" không phụ thuộc múi giờ
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+      const day = String(selectedDate.getDate()).padStart(2, "0");
+      const formattedDateStr = `${year}-${month}-${day}`; // Ví dụ: "2026-07-15"
+
       const { data } = await axios.post(
         `${backendUrl}/api/doctor/update-availability`,
-        { workDate: selectedDate, slots: slotsPayload },
+        {
+          workDate: formattedDateStr, // Gửi chuỗi ngày đã chuẩn hóa
+          slots: slotsPayload,
+        },
         { headers: { dtoken: dToken } },
       );
 

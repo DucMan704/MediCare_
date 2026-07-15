@@ -63,7 +63,7 @@ const AIDoctor = () => {
   };
 
   return (
-    <div className="min-h-[85vh] bg-[#F8F9FD] flex justify-center items-center py-10 px-4 sm:px-6">
+    <div className="min-h-[85vh] bg-[#FFFFFF] flex justify-center items-center py-10 px-4 sm:px-6">
       <div className="w-full max-w-7xl flex flex-col lg:flex-row gap-10 items-center">
         {/* --- CỘT TRÁI: Banner & Giới thiệu (Hiển thị trên màn hình lớn) --- */}
         <div className="hidden lg:flex flex-col justify-center w-1/2 pr-8">

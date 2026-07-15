@@ -133,22 +133,41 @@ const IconStarFilled = (props) => (
 
 /* A row of 5 stars, partially filled based on `value` (0–5, decimals ok). */
 const StarRow = ({ value = 0, size = 14 }) => {
-  const percent = (Math.max(0, Math.min(5, value)) / 5) * 100;
+  // Đảm bảo giá trị truyền vào luôn nằm trong khoảng [0, 5]
+  const validatedValue = Math.max(0, Math.min(5, value));
+
   return (
-    <div className="relative inline-flex leading-none">
-      <div className="flex gap-0.5 text-gray-200">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <IconStarFilled key={i} style={{ width: size, height: size }} />
-        ))}
-      </div>
-      <div
-        className="absolute inset-0 flex gap-0.5 overflow-hidden text-[#E0A93B]"
-        style={{ width: `${percent}%` }}
-      >
-        {Array.from({ length: 5 }).map((_, i) => (
-          <IconStarFilled key={i} style={{ width: size, height: size }} />
-        ))}
-      </div>
+    <div className="flex gap-0.5 leading-none text-gray-200">
+      {Array.from({ length: 5 }).map((_, i) => {
+        // Mức độ lấp đầy của ngôi sao hiện tại (từ 0 đến 1)
+        // Ví dụ: value = 4.5 thì các sao i=0,1,2,3 sẽ ra 1 (100%). Sao i=4 sẽ ra 0.5 (50%)
+        const activeWidth = Math.max(0, Math.min(1, validatedValue - i)) * 100;
+
+        return (
+          <div
+            key={i}
+            className="relative inline-block"
+            style={{ width: size, height: size }}
+          >
+            {/* Lớp nền màu xám (Sao trống) */}
+            <IconStarFilled style={{ width: size, height: size }} />
+
+            {/* Lớp phủ màu vàng (Sao đầy / đầy một phần) */}
+            {activeWidth > 0 && (
+              <div
+                className="absolute top-0 left-0 h-full overflow-hidden text-[#E0A93B]"
+                style={{ width: `${activeWidth}%` }}
+              >
+                {/* Ép icon bên trong luôn giữ kích thước chuẩn (size) 
+                    để không bị bóp méo khi thẻ div cha bị div cha cắt bớt width */}
+                <div style={{ width: size, height: size }}>
+                  <IconStarFilled style={{ width: size, height: size }} />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -275,7 +294,7 @@ const DoctorProfile = () => {
     <div className="p-4 sm:p-6 lg:p-8 min-h-full bg-[#FFFFFF]">
       <div className="max-w-4xl mx-auto">
         {/* ---------- Header banner ---------- */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#3366FF] to-[#99FFFF] px-6 py-8 sm:px-10 sm:py-10">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br bg-primary px-6 py-8 sm:px-10 sm:py-10">
           <div
             className="absolute inset-0 opacity-10 pointer-events-none"
             style={{
@@ -288,7 +307,7 @@ const DoctorProfile = () => {
               <div
                 className={`rounded-full p-1.5 ${
                   available
-                    ? "ring-4 ring-[#2F9E6E]/70"
+                    ? "ring-4 ring-[#FFFFFF]/70"
                     : "ring-4 ring-white/20"
                 }`}
               >
@@ -341,7 +360,7 @@ const DoctorProfile = () => {
         {/* ---------- Quick stat strip ---------- */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 -mt-6 relative z-10 px-1">
           <div className="bg-white rounded-xl shadow-sm border border-[#E3E7E1] p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#F6ECDA] text-[#B8863B] flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg text-[#B8863B] flex items-center justify-center shrink-0">
               <IconWallet className="w-4.5 h-4.5" />
             </div>
             <div>
@@ -349,13 +368,13 @@ const DoctorProfile = () => {
                 Phí khám
               </p>
               <p className="text-sm font-semibold text-[#1F2A27]">
-                {currency} {profileData.fees}
+                {profileData.fees} {currency}
               </p>
             </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-[#E3E7E1] p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#E3EEEC] text-[#155E56] flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg text-[#155E56] flex items-center justify-center shrink-0">
               <IconMapPin className="w-4.5 h-4.5" />
             </div>
             <div className="min-w-0">
@@ -371,9 +390,7 @@ const DoctorProfile = () => {
           <div className="bg-white rounded-xl shadow-sm border border-[#E3E7E1] p-4 flex items-center gap-3">
             <div
               className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                available
-                  ? "bg-[#E4F6EE] text-[#2F9E6E]"
-                  : "bg-gray-100 text-gray-400"
+                available ? " text-[#2F9E6E]" : "bg-gray-100 text-gray-400"
               }`}
             >
               <IconClock className="w-4.5 h-4.5" />
@@ -391,7 +408,7 @@ const DoctorProfile = () => {
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-[#E3E7E1] p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[#FBF1DD] text-[#E0A93B] flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-lg text-[#E0A93B] flex items-center justify-center shrink-0">
               <IconStarFilled className="w-4.5 h-4.5" />
             </div>
             <div>

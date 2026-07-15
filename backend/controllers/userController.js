@@ -12,23 +12,9 @@ import MedicalRecord from "../models/medicalRecordModel.js";
 import userMedicalRecordModel from "../models/userMedicalRecordModel.js";
 import reviewModel from "../models/reviewModel.js";
 import { v2 as cloudinary } from "cloudinary";
-import stripe from "stripe";
-import razorpay from "razorpay";
 
 const ACCESS_TOKEN_TTL = "30m";
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
-
-// Gateway Initialize
-const stripeInstance = process.env.STRIPE_SECRET_KEY
-  ? new stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
-const razorpayInstance =
-  process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
-    ? new razorpay({
-        key_id: process.env.RAZORPAY_KEY_ID,
-        key_secret: process.env.RAZORPAY_KEY_SECRET,
-      })
-    : null;
 
 // API to register user
 const registerUser = async (req, res) => {
@@ -94,58 +80,52 @@ const registerUser = async (req, res) => {
   }
 };
 
-// API to login user
+// ============================================
+// 1. LOGIN
+// ============================================
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Kiểm tra dữ liệu đầu vào
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Email and password are required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and password are required" });
     }
 
-    // Chuẩn hóa email
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Tìm user
     const user = await userModel.findOne({ email: normalizedEmail });
-
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
     }
 
-    // So sánh mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
     }
 
-    // Tạo JWT
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: ACCESS_TOKEN_TTL,
-    });
+    // Access token — chứa cả role để middleware phân quyền dễ hơn nếu cần
+    const token = jwt.sign(
+      { id: user._id, role: "User" },
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_TTL },
+    );
 
-    // tạo refresh token
     const refreshToken = crypto.randomBytes(64).toString("hex");
 
-    //lưu refresh token vào database
+    // Dùng đúng field ownerId + ownerType theo schema
     await Session.create({
       ownerId: user._id,
-      ownerType: "User",
+      ownerType: "User", // đổi thành "Doctor"/"Admin" nếu là API login riêng cho vai trò đó
       refreshToken,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL), // 7 ngày
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL),
     });
-    // Trả refreshtoken về trong cookie
+
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
@@ -153,7 +133,6 @@ const loginUser = async (req, res) => {
       maxAge: REFRESH_TOKEN_TTL,
     });
 
-    // Trả kết quả
     return res.status(200).json({
       success: true,
       message: "Login successfully",
@@ -167,29 +146,30 @@ const loginUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Login Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
   }
 };
 
-//logout user
+// ============================================
+// 3. LOGOUT
+// ============================================
 const logoutUser = async (req, res) => {
   try {
-    // lấy refresh token từ cookie
-    const refreshToken = req.cookies.refreshToken;
+    const refreshTokenValue = req.cookies?.refreshToken;
 
-    if (refreshToken) {
-      // xóa refresh token trong db
-      await Session.deleteOne({ refreshToken });
-
-      // xóa refresh token trong cookie
-      res.clearCookie("refreshToken");
+    if (refreshTokenValue) {
+      await Session.deleteOne({ refreshToken: refreshTokenValue });
     }
 
-    return res.status(204);
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
+
+    return res.status(204).end();
   } catch (error) {
     console.error("Logout Error:", error);
     return res.status(500).json({ message: "Internal Server Error" });
@@ -204,43 +184,59 @@ const authMe = async (req, res) => {
   });
 };
 
-//refresh token
+// ============================================
+// 2. REFRESH TOKEN — rotate + hỗ trợ đa vai trò (User/Doctor/Admin)
+// ============================================
 const refreshToken = async (req, res) => {
   try {
-    // lấy refresh token từ cookie
     const token = req.cookies?.refreshToken;
     if (!token) {
       return res
         .status(401)
-        .json({ message: "Access Denied: No refresh token provided" });
+        .json({ success: false, message: "No refresh token provided" });
     }
 
-    // so sánh với refresh token trong db
     const session = await Session.findOne({ refreshToken: token });
-
     if (!session) {
       return res
         .status(403)
-        .json({ message: "Access Denied: Invalid refresh token" });
-    }
-    // kiểm tra thời gian hết hạn của refresh token
-    if (session.expiresAt < new Date()) {
-      return res
-        .status(403)
-        .json({ message: "Access Denied: Refresh token expired" });
+        .json({ success: false, message: "Invalid refresh token" });
     }
 
-    // tạo access token mới
+    // Vẫn kiểm tra thủ công dù có TTL index, vì TTL không xóa ngay lập tức (delay ~60s)
+    if (session.expiresAt < new Date()) {
+      await Session.deleteOne({ _id: session._id });
+      return res
+        .status(403)
+        .json({ success: false, message: "Refresh token expired" });
+    }
+
+    // Cấp access token mới — giữ nguyên ownerId + ownerType (role) từ session
     const newAccessToken = jwt.sign(
-      { id: session.userId },
+      { id: session.ownerId, role: session.ownerType },
       process.env.JWT_SECRET,
       { expiresIn: ACCESS_TOKEN_TTL },
     );
-    // trả access token mới về cho client
-    return res.status(200).json({ accessToken: newAccessToken });
+
+    // Rotate refresh token
+    const newRefreshToken = crypto.randomBytes(64).toString("hex");
+    session.refreshToken = newRefreshToken;
+    session.expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL);
+    await session.save();
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: REFRESH_TOKEN_TTL,
+    });
+
+    return res.status(200).json({ success: true, token: newAccessToken });
   } catch (error) {
     console.error("Refresh Token Error:", error);
-    return res.status(500).json({ message: "Internal Server Error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
   }
 };
 
@@ -485,177 +481,6 @@ const cancelAppointment = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.log(error);
-    return res.json({ success: false, message: error.message });
-  }
-};
-
-// API to make payment of appointment using razorpay
-const paymentRazorpay = async (req, res) => {
-  try {
-    if (!razorpayInstance) {
-      return res.json({
-        success: false,
-        message: "Razorpay is not configured",
-      });
-    }
-
-    if (!process.env.CURRENCY) {
-      return res.json({
-        success: false,
-        message: "Currency is not configured",
-      });
-    }
-
-    const { appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId);
-
-    if (
-      !appointmentData ||
-      appointmentData.cancelled ||
-      !appointmentData.isAccepted
-    ) {
-      return res.json({
-        success: false,
-        message: "Appointment Cancelled or not found",
-      });
-    }
-
-    // creating options for razorpay payment
-    const options = {
-      amount: appointmentData.amount * 100,
-      currency: process.env.CURRENCY,
-      receipt: appointmentId,
-    };
-
-    // creation of an order
-    const order = await razorpayInstance.orders.create(options);
-
-    return res.json({ success: true, order });
-  } catch (error) {
-    console.log(error);
-    return res.json({ success: false, message: error.message });
-  }
-};
-
-// API to verify payment of razorpay
-const verifyRazorpay = async (req, res) => {
-  try {
-    if (!razorpayInstance) {
-      return res.json({
-        success: false,
-        message: "Razorpay is not configured",
-      });
-    }
-
-    const { razorpay_order_id } = req.body;
-    const orderInfo = await razorpayInstance.orders.fetch(razorpay_order_id);
-
-    const appointmentData = await appointmentModel.findById(orderInfo.receipt);
-
-    if (
-      !appointmentData ||
-      !appointmentData.isAccepted ||
-      appointmentData.cancelled
-    ) {
-      return res.json({ success: false, message: "Appointment Not Accepted" });
-    }
-
-    if (orderInfo.status === "paid") {
-      await appointmentModel.findByIdAndUpdate(orderInfo.receipt, {
-        payment: true,
-      });
-      return res.json({ success: true, message: "Payment Successful" });
-    } else {
-      return res.json({ success: false, message: "Payment Failed" });
-    }
-  } catch (error) {
-    console.log(error);
-    return res.json({ success: false, message: error.message });
-  }
-};
-
-// API to make payment of appointment using Stripe
-const paymentStripe = async (req, res) => {
-  try {
-    if (!stripeInstance) {
-      return res.json({ success: false, message: "Stripe is not configured" });
-    }
-
-    if (!process.env.CURRENCY) {
-      return res.json({
-        success: false,
-        message: "Currency is not configured",
-      });
-    }
-
-    const { appointmentId } = req.body;
-    const { origin } = req.headers;
-
-    const appointmentData = await appointmentModel.findById(appointmentId);
-
-    if (
-      !appointmentData ||
-      appointmentData.cancelled ||
-      !appointmentData.isAccepted
-    ) {
-      return res.json({
-        success: false,
-        message: "Appointment Cancelled or not found",
-      });
-    }
-
-    const currency = process.env.CURRENCY.toLocaleLowerCase();
-
-    const line_items = [
-      {
-        price_data: {
-          currency,
-          product_data: {
-            name: "Appointment Fees",
-          },
-          unit_amount: appointmentData.amount * 100,
-        },
-        quantity: 1,
-      },
-    ];
-
-    const session = await stripeInstance.checkout.sessions.create({
-      success_url: `${origin}/verify?success=true&appointmentId=${appointmentData._id}`,
-      cancel_url: `${origin}/verify?success=false&appointmentId=${appointmentData._id}`,
-      line_items: line_items,
-      mode: "payment",
-    });
-
-    return res.json({ success: true, session_url: session.url });
-  } catch (error) {
-    console.log(error);
-    return res.json({ success: false, message: error.message });
-  }
-};
-
-const verifyStripe = async (req, res) => {
-  try {
-    const { appointmentId, success } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId);
-
-    if (
-      !appointmentData ||
-      appointmentData.cancelled ||
-      !appointmentData.isAccepted
-    ) {
-      return res.json({ success: false, message: "Appointment Not Accepted" });
-    }
-
-    if (success === "true") {
-      await appointmentModel.findByIdAndUpdate(appointmentId, {
-        payment: true,
-      });
-      return res.json({ success: true, message: "Payment Successful" });
-    }
-
-    return res.json({ success: false, message: "Payment Failed" });
-  } catch (error) {
     console.log(error);
     return res.json({ success: false, message: error.message });
   }
@@ -945,10 +770,6 @@ export {
   bookAppointment,
   listAppointment,
   cancelAppointment,
-  paymentRazorpay,
-  verifyRazorpay,
-  paymentStripe,
-  verifyStripe,
   getMedicalRecordsByUserId,
   createMedicalRecordForUser,
   updateMedicalRecordForUser,
