@@ -321,6 +321,25 @@ const DoctorContextProvider = (props) => {
     }
   };
 
+  const fetchAppointmentInfo = async (appointmentId) => {
+    try {
+      // Thêm loading nếu cần thiết
+      const { data } = await axios.get(
+        `${backendUrl}/api/doctor/appointment-info/${appointmentId}`,
+        { headers: { dtoken: dToken } },
+      );
+      console.log("API Response for fetchAppointmentInfo:", data);
+      if (data.success) {
+        return data; // Trả về dữ liệu chi tiết bệnh án
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      console.error("Lỗi khi lấy thông tin bệnh án:", error);
+      toast.error(error.message);
+    }
+  };
+
   const value = {
     dToken,
     setDToken,
@@ -340,6 +359,7 @@ const DoctorContextProvider = (props) => {
     getMedicalRecordsByUserId,
     createMedicalRecord,
     updateMedicalRecord,
+    fetchAppointmentInfo,
   };
 
   return (

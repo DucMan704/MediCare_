@@ -11,9 +11,10 @@ import scheduleModel from "../models/scheduleModel.js";
 import MedicalRecord from "../models/medicalRecordModel.js";
 import userMedicalRecordModel from "../models/userMedicalRecordModel.js";
 import reviewModel from "../models/reviewModel.js";
+import appointmentInfoModel from "../models/appointmentInfoModel.js";
 import { v2 as cloudinary } from "cloudinary";
 
-const ACCESS_TOKEN_TTL = "30m";
+const ACCESS_TOKEN_TTL = "1d";
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
 
 // API to register user
@@ -321,17 +322,18 @@ const findDoctorFeeByAppointmentId = async (appointmentId) => {
   }
 };
 
-// API to book appointment (Cho phép đặt trùng khung giờ tự do)
+// API to book appointment (Lưu appointmentId vào bảng appointmentInfo)
 const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const userId = req.user._id;
-    const { docId, slotDate, slotTime } = req.body;
+    // Lấy thêm appointmentInfo từ body gửi lên
+    const { docId, slotDate, slotTime, appointmentInfo } = req.body;
 
     // 1. Kiểm tra đầu vào cơ bản
-    if (!docId || !slotDate || !slotTime) {
+    if (!docId || !slotDate || !slotTime || !appointmentInfo) {
       await session.abortTransaction();
       session.endSession();
       return res
@@ -339,7 +341,7 @@ const bookAppointment = async (req, res) => {
         .json({ success: false, message: "Missing required fields" });
     }
 
-    // 2. Cập nhật lịch bác sĩ (Bỏ chặn trùng giờ, cho phép đặt tự do)
+    // 2. Cập nhật lịch bác sĩ (Cho phép đặt tự do)
     const updatedDoctor = await doctorModel
       .findOneAndUpdate(
         {
@@ -347,8 +349,7 @@ const bookAppointment = async (req, res) => {
           available: true, // Bác sĩ bắt buộc phải đang mở chế độ nhận lịch
         },
         {
-          // Dùng $addToSet thay vì $push để mảng lưu duy nhất chuỗi giờ đó,
-          // tránh việc mảng bị trùng lắp ["10:30 AM", "10:30 AM", "10:30 AM"] làm phình DB
+          // Dùng $addToSet tránh trùng lắp khung giờ làm phình DB
           $addToSet: { [`slots_booked.${slotDate}`]: slotTime },
         },
         { new: true, select: "-password", session },
@@ -383,14 +384,13 @@ const bookAppointment = async (req, res) => {
     if (!userData) {
       await session.abortTransaction();
       session.endSession();
-      // Đã sửa: Thêm return ở đây để tránh treo API
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
 
-    // 4. Chuẩn bị dữ liệu lịch hẹn
-    delete updatedDoctor.slots_booked; // Xóa bớt data mảng cồng kềnh trước khi lưu vào hóa đơn lịch hẹn
+    // 4. Chuẩn bị dữ liệu lịch hẹn chính
+    delete updatedDoctor.slots_booked; // Xóa bớt dữ liệu cồng kềnh
 
     const appointmentData = {
       userId,
@@ -401,13 +401,30 @@ const bookAppointment = async (req, res) => {
       slotTime,
       slotDate,
       date: Date.now(),
+      // Hoàn toàn KHÔNG lưu appointmentInfoId ở đây
     };
 
-    // 5. Tạo và lưu lịch hẹn mới vào database
+    // 5. Tạo và lưu lịch hẹn mới vào database trước để lấy _id
     const newAppointment = new appointmentModel(appointmentData);
-    await newAppointment.save({ session });
+    const savedAppointment = await newAppointment.save({ session });
 
-    // 6. Hoàn tất giao dịch (Commit Transaction)
+    // 6. Tạo và lưu thông tin chi tiết (Lưu kèm appointmentId vừa sinh ra)
+    const infoData = {
+      appointmentId: savedAppointment._id, // Lưu ID của lịch hẹn vừa tạo
+      symptomDescription: appointmentInfo.symptomDescription,
+      painLocation: appointmentInfo.painLocation,
+      painLevel: appointmentInfo.painLevel,
+      startDate: appointmentInfo.startDate,
+      daysSick: appointmentInfo.daysSick,
+      currentCondition: appointmentInfo.currentCondition,
+      hasTakenMedication: appointmentInfo.hasTakenMedication,
+      additionalNotes: appointmentInfo.additionalNotes,
+    };
+
+    const newAppointmentInfo = new appointmentInfoModel(infoData);
+    await newAppointmentInfo.save({ session });
+
+    // 7. Hoàn tất giao dịch (Commit Transaction)
     await session.commitTransaction();
     session.endSession();
 

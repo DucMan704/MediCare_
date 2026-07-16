@@ -113,7 +113,10 @@ const DoctorAppointments = () => {
     getMedicalRecordsByUserId,
     createMedicalRecord,
     updateMedicalRecord,
+    fetchAppointmentInfo,
   } = useContext(DoctorContext);
+  const [selectedInfo, setSelectedInfo] = useState(null); // Lưu trữ object appointmentInfo lấy từ API
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false); // Trạng thái đóng/mở popup info
   const { slotDateFormat, calculateAge, currency } = useContext(AppContext);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null);
@@ -317,6 +320,27 @@ const DoctorAppointments = () => {
       respiratoryRate: record.vitalSigns?.respiratoryRate ?? "",
       oxygenSaturation: record.vitalSigns?.oxygenSaturation ?? "",
     });
+  };
+
+  const showPopupAppointmentInfo = async (appointmentId) => {
+    try {
+      const response = await fetchAppointmentInfo(appointmentId);
+
+      // Kiểm tra xem response có tồn tại và chứa thuộc tính data hay không
+      if (response && response.data) {
+        setSelectedInfo(response.data); // Chỉ gán phần dữ liệu bệnh án { symptomDescription, painLocation... } vào state
+        setIsInfoModalOpen(true);
+      } else if (response) {
+        // Đề phòng trường hợp hàm fetchAppointmentInfo trong Context của bạn đã tự động bóc tách .data rồi
+        setSelectedInfo(response);
+        setIsInfoModalOpen(true);
+      } else {
+        toast.error("Không tìm thấy thông tin bệnh án!");
+      }
+    } catch (error) {
+      console.error("Lỗi khi hiển thị thông tin chi tiết:", error);
+      toast.error("Đã xảy ra lỗi khi tải dữ liệu bệnh án!");
+    }
   };
 
   const startNewMedicalRecord = () => {
@@ -1184,7 +1208,7 @@ const DoctorAppointments = () => {
                           : `${calculateAge(item.userData.dob)} tuổi`}
                       </p>
 
-                      {/* CỘT THỜI GIAN KHÁM: Trả lại giao diện bình thường, không có hover ẩn/hiện */}
+                      {/* CỘT THỜI GIAN KHÁM */}
                       <div className="flex flex-col gap-0.5">
                         <p className="font-medium text-gray-800">
                           {item.slotTime}
@@ -1198,12 +1222,12 @@ const DoctorAppointments = () => {
                         {Number(item.amount).toLocaleString()} {currency}
                       </p>
 
-                      {/* CỘT THAO TÁC: Hiện nút "Xem hóa đơn" xuất hiện mượt mà khi hover */}
+                      {/* CỘT THAO TÁC */}
                       <div
-                        className="relative flex items-center justify-end w-full pr-2 h-full"
+                        className="relative flex items-center justify-end w-full pr-2 h-full gap-2"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {/* 1. Trạng thái mặc định: Ẩn đi khi hover NẾU cuộc hẹn này đã thanh toán */}
+                        {/* 1. Nhóm thao tác chính và Trạng thái */}
                         <div
                           className={`flex items-center justify-end gap-2 transition-opacity duration-150 ${item.payment ? "group-hover:opacity-0 pointer-events-auto group-hover:pointer-events-none" : ""}`}
                         >
@@ -1231,12 +1255,37 @@ const DoctorAppointments = () => {
                           )}
                         </div>
 
+                        {/* NÚT INFO (Luôn hiển thị kế bên Thao Tác / Trạng Thái để tiện xem thông tin nhanh) */}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation(); // Ngăn mở popup dòng
+                            await showPopupAppointmentInfo(item._id);
+                          }}
+                          className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/50 transition duration-150"
+                          title="Xem thông tin chi tiết khám"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2}
+                            stroke="currentColor"
+                            className="w-4 h-4"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.852l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
+                            />
+                          </svg>
+                        </button>
+
                         {/* 2. Trạng thái Hover: Hiện đè nút Xem hóa đơn lên trên */}
                         {item.payment && (
                           <div className="absolute right-2 inset-y-0 flex items-center justify-end hidden group-hover:flex animate-fadeIn">
                             <button
                               onClick={(e) => {
-                                e.stopPropagation(); // Ngăn mở popup bệnh án của dòng
+                                e.stopPropagation();
                                 setActiveInvoice(item);
                                 setIsInvoiceOpen(true);
                               }}
@@ -1251,7 +1300,137 @@ const DoctorAppointments = () => {
                   );
                 })
               )}
+              {/* ==================== POPUP MODAL THÔNG TIN CHI TIẾT BỆNH ÁN (APPOINTMENT INFO) ==================== */}
+              {isInfoModalOpen && selectedInfo && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[3px] p-4 animate-fadeIn"
+                  onClick={() => {
+                    setIsInfoModalOpen(false);
+                    setSelectedInfo(null);
+                  }} // Click ra ngoài để đóng nhanh
+                >
+                  {/* Khung Chi Tiết Bệnh Án */}
+                  <div
+                    className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden text-left animate-scaleIn"
+                    onClick={(e) => e.stopPropagation()} // Chặn đóng khi click vào trong thân Modal
+                  >
+                    {/* Body Modal chứa thông tin lấy từ appointmentInfo */}
+                    <div className="p-6 text-sm text-gray-600 space-y-4 max-h-[70vh] overflow-y-auto">
+                      {/* Mô tả triệu chứng bệnh */}
+                      <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100">
+                        <p className="font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5">
+                          🩺 Triệu chứng lâm sàng:
+                        </p>
+                        <p className="text-gray-600 leading-relaxed italic">
+                          "
+                          {selectedInfo?.symptomDescription ||
+                            "Không có mô tả triệu chứng"}
+                          "
+                        </p>
+                      </div>
 
+                      {/* Bảng chi tiết chỉ số phụ */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="border border-gray-100 p-3 rounded-xl">
+                          <span className="text-xs text-gray-400 block">
+                            Vị trí đau nhức:
+                          </span>
+                          <span className="font-semibold text-gray-800">
+                            {selectedInfo?.painLocation || "Chưa xác định"}
+                          </span>
+                        </div>
+
+                        <div className="border border-gray-100 p-3 rounded-xl">
+                          <span className="text-xs text-gray-400 block">
+                            Mức độ đau:
+                          </span>
+                          <span className="font-semibold text-amber-600">
+                            {selectedInfo?.painLevel !== undefined &&
+                            selectedInfo?.painLevel !== null
+                              ? `${selectedInfo.painLevel}/10`
+                              : "Chưa đánh giá"}
+                          </span>
+                        </div>
+
+                        <div className="border border-gray-100 p-3 rounded-xl">
+                          <span className="text-xs text-gray-400 block">
+                            Số ngày phát bệnh:
+                          </span>
+                          <span className="font-semibold text-gray-800">
+                            {selectedInfo?.daysSick !== undefined &&
+                            selectedInfo?.daysSick !== null
+                              ? `${selectedInfo.daysSick} ngày`
+                              : "Chưa cập nhật"}
+                          </span>
+                        </div>
+
+                        <div className="border border-gray-100 p-3 rounded-xl">
+                          <span className="text-xs text-gray-400 block">
+                            Đã tự uống thuốc:
+                          </span>
+                          <span
+                            className={`inline-flex px-2 py-0.5 mt-0.5 text-xs font-semibold rounded-md ${
+                              selectedInfo?.hasTakenMedication ===
+                                "Đã uống thuốc" ||
+                              selectedInfo?.hasTakenMedication === true ||
+                              selectedInfo?.hasTakenMedication === "yes"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                                : "bg-red-50 text-red-700 border border-red-100"
+                            }`}
+                          >
+                            {selectedInfo?.hasTakenMedication ===
+                              "Đã uống thuốc" ||
+                            selectedInfo?.hasTakenMedication === true ||
+                            selectedInfo?.hasTakenMedication === "yes"
+                              ? "Đã uống thuốc"
+                              : "Chưa uống thuốc"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Tình trạng hiện tại */}
+                      <div className="space-y-1">
+                        <span className="text-xs text-gray-400 block font-semibold">
+                          Tình trạng cơ thể hiện tại:
+                        </span>
+                        <p className="text-gray-700 bg-gray-50/50 px-3 py-2.5 rounded-lg border border-gray-100 leading-relaxed">
+                          {selectedInfo?.currentCondition === "do_hon"
+                            ? "Đã đỡ hơn"
+                            : selectedInfo?.currentCondition === "on_dinh"
+                              ? "Đang ổn định"
+                              : selectedInfo?.currentCondition === "nang_hon"
+                                ? "Nặng hơn"
+                                : "Chưa cập nhật"}
+                        </p>
+                      </div>
+
+                      {/* Ghi chú thêm từ bệnh nhân */}
+                      <div className="space-y-1">
+                        <span className="text-xs text-gray-400 block font-semibold">
+                          Ghi chú bổ sung:
+                        </span>
+                        <p className="text-gray-700 bg-gray-50/50 px-3 py-2.5 rounded-lg border border-gray-100 leading-relaxed">
+                          {selectedInfo?.additionalNotes ||
+                            "Không có ghi chú thêm."}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Footer Đóng dưới đáy */}
+                    <div className="border-t border-gray-50 bg-gray-50/50 px-6 py-4 flex justify-end">
+                      <button
+                        onClick={() => {
+                          setIsInfoModalOpen(false);
+                          setSelectedInfo(null);
+                        }}
+                        className="px-5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-600 hover:text-gray-800 transition shadow-sm"
+                      >
+                        Đóng lại
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* ==================== POPUP MODAL CHÍNH GIỮA MÀN HÌNH (KHI CLICK) ==================== */}
               {isInvoiceOpen && activeInvoice && (
                 <div

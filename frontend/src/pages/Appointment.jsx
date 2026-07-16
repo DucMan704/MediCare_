@@ -96,6 +96,24 @@ const formatReviewDate = (iso) => {
   }
 };
 
+// Giá trị khởi tạo cho form thông tin khám (khớp với bảng appointment_info)
+const initialAppointmentInfo = {
+  symptomDescription: "",
+  painLocation: "",
+  painLevel: 5,
+  startDate: "",
+  daysSick: "",
+  currentCondition: "on_dinh",
+  hasTakenMedication: false,
+  additionalNotes: "",
+};
+
+const CONDITION_OPTIONS = [
+  { value: "nang_hon", label: "Nặng hơn" },
+  { value: "on_dinh", label: "Ổn định" },
+  { value: "do_hon", label: "Đỡ hơn" },
+];
+
 const Appointment = () => {
   const { docId } = useParams();
   const { doctors, currencySymbol, backendUrl, token, getDoctosData } =
@@ -107,6 +125,13 @@ const Appointment = () => {
   const [docSlots, setDocSlots] = useState([]);
   const [slotIndex, setSlotIndex] = useState(0);
   const [slotTime, setSlotTime] = useState("");
+
+  // Thông tin khám (appointment_info) — khai báo trước khi đặt lịch
+  const [appointmentInfo, setAppointmentInfo] = useState(
+    initialAppointmentInfo,
+  );
+  const [infoErrors, setInfoErrors] = useState({});
+  const [bookingLoading, setBookingLoading] = useState(false);
 
   // Reviews
   const [reviews, setReviews] = useState([]);
@@ -211,6 +236,28 @@ const Appointment = () => {
     }
   };
 
+  // Cập nhật 1 field trong form thông tin khám + xoá lỗi tương ứng khi user gõ lại
+  const setInfoField = (key, value) => {
+    setAppointmentInfo((prev) => ({ ...prev, [key]: value }));
+    if (infoErrors[key]) setInfoErrors((prev) => ({ ...prev, [key]: null }));
+  };
+
+  // Validate form thông tin khám trước khi cho phép đặt lịch
+  const validateAppointmentInfo = () => {
+    const next = {};
+    if (!appointmentInfo.symptomDescription.trim()) {
+      next.symptomDescription = "Vui lòng mô tả triệu chứng";
+    }
+    if (
+      appointmentInfo.daysSick !== "" &&
+      Number(appointmentInfo.daysSick) < 0
+    ) {
+      next.daysSick = "Số ngày không hợp lệ";
+    }
+    setInfoErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
   const bookAppointment = async () => {
     if (!token) {
       toast.warning("Vui lòng đăng nhập để đặt lịch khám");
@@ -219,6 +266,11 @@ const Appointment = () => {
 
     if (!slotTime) {
       toast.warning("Vui lòng chọn khung giờ khám");
+      return;
+    }
+
+    if (!validateAppointmentInfo()) {
+      toast.warning("Vui lòng điền đầy đủ thông tin khám");
       return;
     }
 
@@ -233,16 +285,33 @@ const Appointment = () => {
 
     const slotDate = `${formattedDay}_${formattedMonth}_${year}`;
 
+    // Payload khớp với bảng appointment_info ở backend
+    const infoPayload = {
+      symptomDescription: appointmentInfo.symptomDescription.trim(),
+      painLocation: appointmentInfo.painLocation.trim() || null,
+      painLevel: Number(appointmentInfo.painLevel),
+      startDate: appointmentInfo.startDate || null,
+      daysSick:
+        appointmentInfo.daysSick === ""
+          ? null
+          : Number(appointmentInfo.daysSick),
+      currentCondition: appointmentInfo.currentCondition,
+      hasTakenMedication: appointmentInfo.hasTakenMedication,
+      additionalNotes: appointmentInfo.additionalNotes.trim() || null,
+    };
+
     try {
+      setBookingLoading(true);
       const { data } = await axios.post(
         backendUrl + "/api/user/book-appointment",
-        { docId, slotDate, slotTime },
+        { docId, slotDate, slotTime, appointmentInfo: infoPayload },
         { headers: { token } },
       );
       if (data.success) {
         toast.success(data.message);
         getDoctosData();
         getAvailableSlots();
+        setAppointmentInfo(initialAppointmentInfo);
         navigate("/my-appointments");
       } else {
         toast.error(data.message);
@@ -250,6 +319,8 @@ const Appointment = () => {
     } catch (error) {
       console.log(error);
       toast.error(error.message);
+    } finally {
+      setBookingLoading(false);
     }
   };
 
@@ -465,11 +536,158 @@ const Appointment = () => {
           )}
         </div>
 
+        {/* Thông tin khám — lưu vào bảng appointment_info khi đặt lịch */}
+        <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 p-4 sm:p-5">
+          <p className="text-sm font-semibold text-gray-800">Thông tin khám</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Giúp bác sĩ chuẩn bị trước khi bạn đến khám
+          </p>
+
+          <div className="mt-4 flex flex-col gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                Bạn đang bị đau/khó chịu ở đâu?{" "}
+                <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={appointmentInfo.symptomDescription}
+                onChange={(e) =>
+                  setInfoField("symptomDescription", e.target.value)
+                }
+                placeholder="Ví dụ: đau bụng, buồn nôn, sốt nhẹ..."
+                rows={3}
+                className="w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none placeholder:text-gray-400 focus:border-primary"
+              />
+              {infoErrors.symptomDescription && (
+                <p className="mt-1 text-xs text-red-500">
+                  {infoErrors.symptomDescription}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                Vị trí cụ thể (nếu có)
+              </label>
+              <input
+                type="text"
+                value={appointmentInfo.painLocation}
+                onChange={(e) => setInfoField("painLocation", e.target.value)}
+                placeholder="Ví dụ: bụng dưới bên phải"
+                className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none placeholder:text-gray-400 focus:border-primary"
+              />
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-medium text-gray-600">
+                  Mức độ đau
+                </label>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  {appointmentInfo.painLevel}/10
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                value={appointmentInfo.painLevel}
+                onChange={(e) => setInfoField("painLevel", e.target.value)}
+                className="w-full accent-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Bắt đầu từ ngày
+                </label>
+                <input
+                  type="date"
+                  value={appointmentInfo.startDate}
+                  onChange={(e) => setInfoField("startDate", e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Đã bị (số ngày)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={appointmentInfo.daysSick}
+                  onChange={(e) => setInfoField("daysSick", e.target.value)}
+                  placeholder="3"
+                  className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none placeholder:text-gray-400 focus:border-primary"
+                />
+              </div>
+            </div>
+            {infoErrors.daysSick && (
+              <p className="-mt-3 text-xs text-red-500">
+                {infoErrors.daysSick}
+              </p>
+            )}
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                Tình trạng hiện tại
+              </label>
+              <div className="flex gap-2">
+                {CONDITION_OPTIONS.map((opt) => (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => setInfoField("currentCondition", opt.value)}
+                    className={`flex-1 rounded-xl border px-3 py-2 text-xs transition-colors ${
+                      appointmentInfo.currentCondition === opt.value
+                        ? "border-primary bg-primary/10 font-medium text-primary"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={appointmentInfo.hasTakenMedication}
+                onChange={(e) =>
+                  setInfoField("hasTakenMedication", e.target.checked)
+                }
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="text-xs text-gray-600">
+                Tôi đã tự điều trị hoặc dùng thuốc trước đó
+              </span>
+            </label>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                Ghi chú thêm
+              </label>
+              <textarea
+                value={appointmentInfo.additionalNotes}
+                onChange={(e) =>
+                  setInfoField("additionalNotes", e.target.value)
+                }
+                placeholder="Thông tin khác bạn muốn bác sĩ biết trước..."
+                rows={2}
+                className="w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-sm outline-none placeholder:text-gray-400 focus:border-primary"
+              />
+            </div>
+          </div>
+        </div>
+
         <button
           onClick={bookAppointment}
-          className="mt-6 rounded-full bg-primary px-20 py-3 text-sm font-light text-white transition-opacity hover:opacity-90"
+          disabled={bookingLoading}
+          className="mt-6 rounded-full bg-primary px-20 py-3 text-sm font-light text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Đặt lịch khám
+          {bookingLoading ? "Đang đặt lịch..." : "Đặt lịch khám"}
         </button>
       </div>
 

@@ -16,6 +16,7 @@ import {
   getDoctorReview,
   changePassword,
   getSecurityLogs,
+  getAppointmentInfo,
 } from "../controllers/doctorController.js";
 import {
   getMedicalRecordsByUserId,
@@ -56,5 +57,10 @@ doctorRouter.get("/get-availability", authDoctor, getAvailability);
 doctorRouter.get("/reviews/:docId", getDoctorReview);
 doctorRouter.put("/change-password", authDoctor, changePassword);
 doctorRouter.get("/security-logs", authDoctor, getSecurityLogs);
+doctorRouter.get(
+  "/appointment-info/:appointmentId",
+  authDoctor,
+  getAppointmentInfo,
+);
 
 export default doctorRouter;

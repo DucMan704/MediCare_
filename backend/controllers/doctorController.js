@@ -7,6 +7,7 @@ import Review from "../models/reviewModel.js";
 import Session from "../models/sessionModel.js";
 import SecurityLog from "../models/securityLog.js";
 import crypto from "crypto";
+import appointmentInfoModel from "../models/appointmentInfoModel.js";
 import mongoose from "mongoose";
 
 // Cấu hình thời gian sống của Token
@@ -742,6 +743,58 @@ const appointmentCancel = async (req, res) => {
   }
 };
 
+// API lấy chi tiết bệnh án bằng appointmentId dành cho Bác sĩ
+const getAppointmentInfo = async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+
+    // 1. Kiểm tra ID truyền vào hợp lệ
+    if (!appointmentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu mã lịch hẹn (Appointment ID)",
+      });
+    }
+    // 2. Tìm kiếm thông tin chi tiết bệnh án dựa vào appointmentId
+    const appointmentInfo = await appointmentInfoModel.findOne({
+      appointmentId,
+    });
+    if (!appointmentInfo) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy thông tin bệnh án cho lịch hẹn này",
+      });
+    }
+
+    // 3. (Tùy chọn) Kiểm tra bảo mật: Đảm bảo bác sĩ yêu cầu đúng là bác sĩ của cuộc hẹn này
+    // Bác sĩ đăng nhập thành công sẽ có docId trong req.body (do middleware gán vào)
+    const docId = req.body.docId;
+    if (docId) {
+      const appointment = await appointmentModel
+        .findById(appointmentId)
+        .select("docId");
+      if (appointment && appointment.docId.toString() !== docId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem thông tin lịch hẹn này",
+        });
+      }
+    }
+
+    // 4. Trả về dữ liệu thành công cho Frontend
+    return res.status(200).json({
+      success: true,
+      data: appointmentInfo,
+    });
+  } catch (error) {
+    console.error("Get Appointment Info Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 export {
   loginDoctor,
   appointmentsDoctor,
@@ -757,4 +810,5 @@ export {
   updateAvailability,
   getAvailability,
   getDoctorReview,
+  getAppointmentInfo,
 };
