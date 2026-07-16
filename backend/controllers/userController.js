@@ -20,21 +20,20 @@ const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    // checking for all data to register user
     if (!name || !email || !password) {
       return res
         .status(400)
         .json({ success: false, message: "Missing Details" });
     }
 
-    // validating email format
+  
     if (!validator.isEmail(email)) {
       return res
         .status(400)
         .json({ success: false, message: "Please enter a valid email" });
     }
 
-    // checking if user already exists
+  
     const existingUser = await userModel.findOne({ email });
     if (existingUser) {
       return res
@@ -42,7 +41,6 @@ const registerUser = async (req, res) => {
         .json({ success: false, message: "User already exists" });
     }
 
-    // validating strong password
     if (password.length < 8) {
       return res
         .status(400)
@@ -50,7 +48,7 @@ const registerUser = async (req, res) => {
     }
 
     // hashing user password
-    const salt = await bcrypt.genSalt(10); // the more no. round the more time it will take
+    const salt = await bcrypt.genSalt(10); 
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const userData = {
@@ -80,9 +78,7 @@ const registerUser = async (req, res) => {
   }
 };
 
-// ============================================
-// 1. LOGIN
-// ============================================
+
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -109,7 +105,6 @@ const loginUser = async (req, res) => {
         .json({ success: false, message: "Invalid email or password" });
     }
 
-    // Access token — chứa cả role để middleware phân quyền dễ hơn nếu cần
     const token = jwt.sign(
       { id: user._id, role: "User" },
       process.env.JWT_SECRET,
@@ -118,10 +113,10 @@ const loginUser = async (req, res) => {
 
     const refreshToken = crypto.randomBytes(64).toString("hex");
 
-    // Dùng đúng field ownerId + ownerType theo schema
+    
     await Session.create({
       ownerId: user._id,
-      ownerType: "User", // đổi thành "Doctor"/"Admin" nếu là API login riêng cho vai trò đó
+      ownerType: "User", 
       refreshToken,
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL),
     });
@@ -152,9 +147,6 @@ const loginUser = async (req, res) => {
   }
 };
 
-// ============================================
-// 3. LOGOUT
-// ============================================
 const logoutUser = async (req, res) => {
   try {
     const refreshTokenValue = req.cookies?.refreshToken;
@@ -184,9 +176,7 @@ const authMe = async (req, res) => {
   });
 };
 
-// ============================================
-// 2. REFRESH TOKEN — rotate + hỗ trợ đa vai trò (User/Doctor/Admin)
-// ============================================
+
 const refreshToken = async (req, res) => {
   try {
     const token = req.cookies?.refreshToken;
@@ -317,11 +307,11 @@ const findDoctorFeeByAppointmentId = async (appointmentId) => {
     return doctor.fees;
   } catch (error) {
     console.error("Error in findDoctorFeeByAppointmentId:", error.message);
-    throw error; // Throw ra ngoài để Controller cấp cao hơn bọc và res.json() lỗi
+    throw error; 
   }
 };
 
-// API to book appointment (Cho phép đặt trùng khung giờ tự do)
+// API book appointment 
 const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -330,7 +320,6 @@ const bookAppointment = async (req, res) => {
     const userId = req.user._id;
     const { docId, slotDate, slotTime } = req.body;
 
-    // 1. Kiểm tra đầu vào cơ bản
     if (!docId || !slotDate || !slotTime) {
       await session.abortTransaction();
       session.endSession();
@@ -339,23 +328,22 @@ const bookAppointment = async (req, res) => {
         .json({ success: false, message: "Missing required fields" });
     }
 
-    // 2. Cập nhật lịch bác sĩ (Bỏ chặn trùng giờ, cho phép đặt tự do)
+   
     const updatedDoctor = await doctorModel
       .findOneAndUpdate(
         {
           _id: docId,
-          available: true, // Bác sĩ bắt buộc phải đang mở chế độ nhận lịch
+          available: true, 
+          [`slots_booked.${slotDate}`]: { $ne: slotTime } 
         },
         {
-          // Dùng $addToSet thay vì $push để mảng lưu duy nhất chuỗi giờ đó,
-          // tránh việc mảng bị trùng lắp ["10:30 AM", "10:30 AM", "10:30 AM"] làm phình DB
-          $addToSet: { [`slots_booked.${slotDate}`]: slotTime },
+          $push: { [`slots_booked.${slotDate}`]: slotTime },
         },
         { new: true, select: "-password", session },
       )
       .lean();
 
-    // Nếu không cập nhật thành công (Bác sĩ không tồn tại hoặc bận)
+    // Nếu không cập nhật thành công 
     if (!updatedDoctor) {
       const docCheck = await doctorModel.findById(docId).session(session);
       await session.abortTransaction();
@@ -371,6 +359,11 @@ const bookAppointment = async (req, res) => {
           .status(400)
           .json({ success: false, message: "Doctor Not Available" });
       }
+      
+      // Nếu docCheck có tồn tại và available = true, nguyên nhân chắc chắn là do slot đã bị trùng
+      return res
+        .status(400)
+        .json({ success: false, message: "Khung giờ này vừa mới được người khác đặt, vui lòng chọn giờ khác" });
     }
 
     // 3. Lấy thông tin người dùng đặt lịch
@@ -383,14 +376,13 @@ const bookAppointment = async (req, res) => {
     if (!userData) {
       await session.abortTransaction();
       session.endSession();
-      // Đã sửa: Thêm return ở đây để tránh treo API
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
 
-    // 4. Chuẩn bị dữ liệu lịch hẹn
-    delete updatedDoctor.slots_booked; // Xóa bớt data mảng cồng kềnh trước khi lưu vào hóa đơn lịch hẹn
+    // Chuẩn bị dữ liệu lịch hẹn
+    delete updatedDoctor.slots_booked; 
 
     const appointmentData = {
       userId,
@@ -406,8 +398,6 @@ const bookAppointment = async (req, res) => {
     // 5. Tạo và lưu lịch hẹn mới vào database
     const newAppointment = new appointmentModel(appointmentData);
     await newAppointment.save({ session });
-
-    // 6. Hoàn tất giao dịch (Commit Transaction)
     await session.commitTransaction();
     session.endSession();
 
@@ -415,7 +405,6 @@ const bookAppointment = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Appointment Booked Successfully" });
   } catch (error) {
-    // Nếu có bất kỳ lỗi hệ thống nào xảy ra, rollback lại toàn bộ dữ liệu sạch sẽ
     await session.abortTransaction();
     session.endSession();
 
